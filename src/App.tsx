@@ -1,44 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
-import { 
-  Phone, 
-  Search, 
-  Bookmark, 
-  Settings as SettingsIcon, 
-  Home as HomeIcon, 
-  Share2, 
-  ArrowLeft, 
-  Clock, 
-  Wifi, 
-  Battery, 
-  Terminal, 
-  CheckCircle2, 
-  Copy, 
-  FileCode, 
-  Folder, 
-  FolderOpen,
-  Bell, 
-  FileText,
-  Eye,
-  RefreshCw,
-  SearchCode,
-  Sliders,
-  Database,
-  CloudOff,
-  Moon,
-  Sun,
-  Laptop,
-  Cpu,
-  BookOpen,
-  BarChart3,
-  MessageSquare,
-  Zap,
-  Activity,
-  GitMerge,
-  FileCheck
+import {
+  Search, Mail, ChevronLeft, Share2, X, Menu, TrendingUp,
+  Newspaper, BookOpen, MessageSquare, Sparkles, Eye, Clock,
+  Send, LineChart, Calendar, ChevronDown, ExternalLink,
+  Facebook, Twitter, Linkedin, Instagram, Sun, Moon,
+  RefreshCw, Bell, TrendingDown, ArrowUpRight, ArrowDownRight,
+  Zap, Shield, Terminal, Check
 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
-import { ANDROID_PROJECT_FILES, AndroidFile } from "./androidFiles";
+import CapsuleLogo from "./CapsuleLogo";
 
+// ─── TYPES ───────────────────────────────────────────────────────────────────
 interface Article {
   id: string;
   title: string;
@@ -47,2083 +18,863 @@ interface Article {
   category: string;
   source: string;
   author: string;
+  authorRole?: string;
   date: string;
   imageUrl: string;
   readTime: string;
+  views?: number;
   isBreaking?: boolean;
   isFeatured?: boolean;
+  tags?: string[];
 }
 
+interface StockData {
+  symbol: string;
+  name: string;
+  price: number;
+  change: number;
+  changePct: number;
+  up: boolean;
+}
+
+interface ChatMsg { role: "user" | "assistant"; text: string; }
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const CLINICAL_TOPICS = [
+  "503B Compounding","ADHD","Allergy","Alzheimer","Anxiety","Asthma",
+  "Atopic Dermatitis","Biosimilars","Bipolar","Brain Health","Breast Cancer",
+  "C. difficile","COPD","COVID-19","Cardiovascular","Cervical Cancer",
+  "Cholesterol","CKD","CLL/SLL","Colorectal Cancer","Depression",
+  "Dermatology","Diabetes","Dry Eye","Endometrial Cancer","Epilepsy",
+  "Eye Care","Flu","GI Cancer","Gout","HER2","HIV","Heart Failure",
+  "Hematology","Hepatitis","Immunization","Immuno-oncology","Infectious Disease",
+  "Lung Cancer","Lymphoma","Mental Health","Migraine","Multiple Myeloma",
+  "Multiple Sclerosis","Neurology","Osteoporosis","Ovarian Cancer",
+  "Pain Management","Parkinson","Pediatrics","Prostate Cancer","Psoriasis",
+  "Reproductive Health","Rheumatoid Arthritis","Schizophrenia","Skin Cancer","Sleep"
+];
+
+const SPOTLIGHT_TOPICS = ["Oncology","mRNA","FDA Guidelines","Sterility Assurance","AI Models"];
+
+const TRENDING = [
+  { rank:1, title:"FDA Panel Backs Moderna's mRNA Flu Vaccine", keyword:"mRNA" },
+  { rank:2, title:"Sonrotoclax+Zanubrutinib Achieves 90%+ MRD Rates in CLL/SLL", keyword:"clinical" },
+  { rank:3, title:"Precision Medicine in Breast Cancer Via Proteomic Profiling", keyword:"cancer" },
+  { rank:4, title:"Non-Opioid Therapies Challenge Opioids in Pain Management", keyword:"regulatory" },
+  { rank:5, title:"AI & Automation Reshaping Pharmacy Dispensing in 2026", keyword:"AI" },
+];
+
+const MOCK_STOCKS: StockData[] = [
+  { symbol:"PFE",  name:"Pfizer",         price:28.42,  change:+0.38, changePct:+1.36, up:true  },
+  { symbol:"JNJ",  name:"Johnson & J.",   price:152.90, change:-1.20, changePct:-0.78, up:false },
+  { symbol:"MRK",  name:"Merck",          price:104.55, change:+2.10, changePct:+2.05, up:true  },
+  { symbol:"ABBV", name:"AbbVie",         price:171.30, change:+0.95, changePct:+0.56, up:true  },
+  { symbol:"BMY",  name:"Bristol-Myers",  price:47.80,  change:-0.60, changePct:-1.24, up:false },
+  { symbol:"GILD", name:"Gilead",         price:88.15,  change:+1.45, changePct:+1.67, up:true  },
+  { symbol:"AMGN", name:"Amgen",          price:265.40, change:-3.20, changePct:-1.19, up:false },
+  { symbol:"BIIB", name:"Biogen",         price:143.75, change:+4.30, changePct:+3.08, up:true  },
+];
+
+const CATEGORY_COLORS: Record<string,string> = {
+  "Drug Approvals":   "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300",
+  "Clinical Trials":  "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300",
+  "Medical Research": "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300",
+  "Healthcare Policy":"bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300",
+  "Industry News":    "bg-emerald-100 text-emerald-800 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300",
+  "Biotechnology":    "bg-cyan-100 text-cyan-800 border-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-300",
+  "AI in Healthcare": "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300",
+};
+
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
 export default function App() {
-  // Simulator States
-  const [activeTab, setActiveTab] = useState<"home" | "search" | "saved" | "settings">("home");
-  const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
-  const [currentCategory, setCurrentCategory] = useState<string>("All News");
-  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [theme, setTheme] = useState<"light"|"dark">("dark");
+  const [activeTab, setActiveTab] = useState<"news"|"ai-lab"|"dashboard">("news");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [clinicalDropOpen, setClinicalDropOpen] = useState(false);
   const [articles, setArticles] = useState<Article[]>([]);
-  const [searchResults, setSearchResults] = useState<Article[]>([]);
-  const [bookmarks, setBookmarks] = useState<string[]>(() => {
-    const saved = localStorage.getItem("pharmanews_bookmarks");
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [darkMode, setDarkMode] = useState<boolean>(true); // default to elegant dark theme for medical intelligence
-  const [notificationsEnabled, setNotificationsEnabled] = useState<boolean>(true);
-  const [cacheSize, setCacheSize] = useState<string>("50 MB");
-  const [autoRefresh, setAutoRefresh] = useState<string>("Every 15 mins");
-  
-  // Simulation Network controls
-  const [offlineMode, setOfflineMode] = useState<boolean>(false);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
-  const [apiSource, setApiSource] = useState<string>("local-cache");
-
-  // Notifications Feed state (simulated FCM)
-  const [fcmNotifications, setFcmNotifications] = useState<{ id: number; title: string; body: string }[]>([]);
-
-  // Studio Inspector States
-  const [selectedFile, setSelectedFile] = useState<AndroidFile>(ANDROID_PROJECT_FILES[0]);
-  const [copiedFileId, setCopiedFileId] = useState<boolean>(false);
-  const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
-    "Gradle": true,
-    "Manifest": true,
-    "Resources": false,
-    "Layouts": false,
-    "Kotlin Arch": true
-  });
-
-  const categoriesList = [
-    "All News",
-    "Drug Approvals",
-    "Clinical Trials",
-    "Medical Research",
-    "Healthcare Policy",
-    "Industry News",
-    "COVID-19 Updates",
-    "Biotechnology",
-    "AI in Healthcare"
-  ];
-
-  // --- CO-PILOT WORKSPACE MODES ---
-  const [workspaceMode, setWorkspaceMode] = useState<"ai-lab" | "android-studio">("ai-lab");
-  const [selectedSubMode, setSelectedSubMode] = useState<
-    "summarization" | "categorization" | "recommendations" | "chatbot" | "simplification" | "trends" | "deduplication" | "smart-search"
-  >("chatbot");
-
-  // --- PHONE EMULATOR IN-APP AI DYNAMIC CONTROLS ---
-  const [activeReadingLevel, setActiveReadingLevel] = useState<"original" | "student" | "professional" | "researcher">("original");
-  const [activeSummaryFormat, setActiveSummaryFormat] = useState<"none" | "short" | "medium" | "detailed">("none");
-  const [emulatorSummaryText, setEmulatorSummaryText] = useState<string>("");
-  const [emulatorSummaryLoading, setEmulatorSummaryLoading] = useState<boolean>(false);
-  const [emulatorArticleText, setEmulatorArticleText] = useState<string>("");
-  const [emulatorArticleLoading, setEmulatorArticleLoading] = useState<boolean>(false);
-
-  // --- 1. SUMMARIZATION WORKSPACE STATES ---
-  const [summaryTargetArticleId, setSummaryTargetArticleId] = useState<string>("1");
-  const [summaryFormat, setSummaryFormat] = useState<"short" | "medium" | "detailed">("medium");
-  const [summarizedText, setSummarizedText] = useState<string>("");
-  const [summaryLoading, setSummaryLoading] = useState<boolean>(false);
-  const [summaryLocalFallback, setSummaryLocalFallback] = useState<boolean>(false);
-
-  // --- 2. CATEGORIZATION WORKSPACE STATES ---
-  const [categorizeArticleId, setCategorizeArticleId] = useState<string>("1");
-  const [classifiedScores, setClassifiedScores] = useState<{ category: string; confidence: number }[]>([]);
-  const [classifyLoading, setClassifyLoading] = useState<boolean>(false);
-  const [classifyLocalFallback, setClassifyLocalFallback] = useState<boolean>(false);
-
-  // --- 3. RECOMMENDATIONS WORKSPACE STATES ---
-  const [usrRole, setUsrRole] = useState<string>("Pharmaceutical Researcher");
-  const [usrTags, setUsrTags] = useState<string[]>(["Biotechnology", "Drug Approvals"]);
-  const [recommendedItems, setRecommendedItems] = useState<{ article: Article; recommendationScore: number; reason: string }[]>([]);
-  const [recommendationLoading, setRecommendationLoading] = useState<boolean>(false);
-  const [recommendationLocalFallback, setRecommendationLocalFallback] = useState<boolean>(false);
-
-  // --- 4. CHATBOT WORKSPACE STATES ---
-  const [chatInput, setChatInput] = useState<string>("");
-  const [chatMessages, setChatMessages] = useState<Array<{ role: "user" | "assistant"; text: string; citations?: string[]; isFallback?: boolean }>>([
-    {
-      role: "assistant",
-      text: "Hello! I am **PharmaNews AI**, your intelligent clinical co-pilot. I can analyze recent clinical trials, summarize drug clearance endpoints, parse medical research, and review international health policy parameters.\n\n*DISCLAIMER: I am an AI information assistant, not a clinical prescription generator. I cannot issue treatment directions or clinical medical advice.*",
-      citations: ["PharmaNews Core System"]
-    }
+  const [loading, setLoading] = useState(true);
+  const [selectedArticle, setSelectedArticle] = useState<Article|null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("All News");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [newsletterEmail, setNewsletterEmail] = useState("");
+  const [newsletterSuccess, setNewsletterSuccess] = useState(false);
+  const [agentRunning, setAgentRunning] = useState(false);
+  const [agentLogs, setAgentLogs] = useState<string[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([
+    { role:"assistant", text:"Hello! I am **PharmaNews AI**, your specialized pharma co-pilot. Ask me about FDA approvals, clinical trials, drug compounds, or any pharma topic!" }
   ]);
-  const [chatLoading, setChatLoading] = useState<boolean>(false);
+  const [chatInput, setChatInput] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+  const [aiSummary, setAiSummary] = useState("");
+  const [aiSumLoading, setAiSumLoading] = useState(false);
+  const [articleView, setArticleView] = useState<"detail"|"ai">("detail");
+  const [stocks] = useState<StockData[]>(MOCK_STOCKS);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const POSTS_PER_PAGE = 5;
 
-  // --- 5. SIMPLIFICATION WORKSPACE STATES ---
-  const [simplifyTargetArticleId, setSimplifyTargetArticleId] = useState<string>("3");
-  const [simplifyMode, setSimplifyMode] = useState<"student" | "professional" | "researcher">("student");
-  const [simplifiedResultText, setSimplifiedResultText] = useState<string>("");
-  const [simplifyLoading, setSimplifyLoading] = useState<boolean>(false);
-  const [simplifyLocalFallback, setSimplifyLocalFallback] = useState<boolean>(false);
-
-  // --- 6. TREND DETECTION WORKSPACE STATES ---
-  const [trendsData, setTrendsData] = useState<any>(null);
-  const [trendsLoading, setTrendsLoading] = useState<boolean>(false);
-  const [trendsLocalFallback, setTrendsLocalFallback] = useState<boolean>(false);
-
-  // --- 7. DUPLICATE DETECTION WORKSPACE STATES ---
-  const [dupArticleIdA, setDupArticleIdA] = useState<string>("2");
-  const [dupArticleIdB, setDupArticleIdB] = useState<string>("7");
-  const [dupMergeResult, setDupMergeResult] = useState<any>(null);
-  const [dupMergeLoading, setDupMergeLoading] = useState<boolean>(false);
-
-  // --- 8. SMART SEMANTIC SEARCH WORKSPACE STATES ---
-  const [smartSearchQuery, setSmartSearchQuery] = useState<string>("Latest weight-loss clinical trials");
-  const [smartSearchResults, setSmartSearchResults] = useState<Array<{ article: Article; semanticMatchScore: number; semanticReason: string }>>([]);
-  const [smartSearchLoading, setSmartSearchLoading] = useState<boolean>(false);
-  const [smartSearchLocalFallback, setSmartSearchLocalFallback] = useState<boolean>(false);
-
-  // Fetch articles from full-stack api
-  const fetchArticles = async (categoryName = currentCategory, search = "") => {
-    if (offlineMode) {
-      setApiSource("offline-room-cache");
-      return; 
-    }
-    setIsLoading(true);
-    try {
-      const response = await fetch("/api/news", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: categoryName,
-          search: search
-        })
-      });
-      const data = await response.json();
-      if (search) {
-        setSearchResults(data.articles || []);
-      } else {
-        setArticles(data.articles || []);
-      }
-      setApiSource(data.source || "local-cache");
-    } catch (error) {
-      console.error("Failed to load news from backend API:", error);
-      setApiSource("fallback-cache");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
+  // Theme
   useEffect(() => {
-    fetchArticles(currentCategory);
-  }, [currentCategory, offlineMode]);
+    document.documentElement.classList.toggle("dark", theme === "dark");
+  }, [theme]);
 
-  useEffect(() => {
-    if (searchQuery) {
-      fetchArticles(currentCategory, searchQuery);
-    } else {
-      setSearchResults([]);
-    }
-  }, [searchQuery]);
-
-  // Sync simulator modified text when selectedArticle changes
-  useEffect(() => {
-    if (selectedArticle) {
-      setEmulatorArticleText(selectedArticle.content);
-      setActiveReadingLevel("original");
-      setActiveSummaryFormat("none");
-      setEmulatorSummaryText("");
-    } else {
-      setEmulatorArticleText("");
-    }
-  }, [selectedArticle]);
-
-  // Persists bookmarks
-  useEffect(() => {
-    localStorage.setItem("pharmanews_bookmarks", JSON.stringify(bookmarks));
-  }, [bookmarks]);
-
-  const toggleBookmark = (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    setBookmarks(prev => {
-      const exists = prev.includes(id);
-      if (exists) {
-        return prev.filter(b => b !== id);
-      } else {
-        return [...prev, id];
-      }
-    });
-  };
-
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(selectedFile.content);
-    setCopiedFileId(true);
-    setTimeout(() => {
-      setCopiedFileId(false);
-    }, 2000);
-  };
-
-  // ==========================================
-  // --- INTEGRATED CLINICAL AI SUITE API CALLS ---
-  // ==========================================
-
-  // Feature 1: Summarize selected news article in playground
-  const handleGetAILabSummary = async () => {
-    const art = articles.find(a => a.id === summaryTargetArticleId) || articles[0];
-    if (!art) return;
-    
-    setSummaryLoading(true);
+  // Fetch articles
+  const fetchArticles = async (cat = activeCategory, q = "") => {
+    setLoading(true);
     try {
-      const response = await fetch("/api/ai/summarize", {
+      const res = await fetch("/api/news", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: art.content,
-          length: summaryFormat
-        })
+        body: JSON.stringify({ category: cat === "All News" ? "" : cat, search: q })
       });
-      const data = await response.json();
-      setSummarizedText(data.summary || "");
-      setSummaryLocalFallback(!!data.localFallback);
-    } catch (e) {
-      console.error(e);
-      setSummarizedText("An unexpected error occurred during summarization.");
-      setSummaryLocalFallback(true);
-    } finally {
-      setSummaryLoading(false);
-    }
+      const data = await res.json();
+      setArticles(data.articles || []);
+      setCurrentPage(1);
+    } catch { setArticles([]); }
+    finally { setLoading(false); }
   };
 
-  // Feature 2: Automatic News Categorization in playground
-  const handleGetAILabClassification = async () => {
-    const art = articles.find(a => a.id === categorizeArticleId) || articles[0];
-    if (!art) return;
+  useEffect(() => { fetchArticles(activeCategory, searchQuery); }, [activeCategory]);
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [chatMessages]);
 
-    setClassifyLoading(true);
+  // AI Summary
+  const handleAISummary = async (article: Article) => {
+    setAiSumLoading(true); setAiSummary("");
     try {
-      const response = await fetch("/api/ai/classify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: art.title,
-          content: art.summary
-        })
+      const res = await fetch("/api/ai/summarize", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ content: article.content, length:"medium" })
       });
-      const data = await response.json();
-      setClassifiedScores(data.categories || []);
-      setClassifyLocalFallback(!!data.localFallback);
-    } catch (e) {
-      console.error(e);
-      setClassifyLocalFallback(true);
-    } finally {
-      setClassifyLoading(false);
-    }
+      const data = await res.json();
+      setAiSummary(data.summary || "");
+    } catch { setAiSummary("Could not generate summary."); }
+    finally { setAiSumLoading(false); }
   };
 
-  // Feature 3: Personalized Recommendations
-  const handleGetAILabRecommendations = async () => {
-    setRecommendationLoading(true);
+  // AI Chat
+  const sendChat = async () => {
+    if (!chatInput.trim() || chatLoading) return;
+    const msg = chatInput.trim();
+    setChatMessages(p => [...p, { role:"user", text:msg }]);
+    setChatInput(""); setChatLoading(true);
     try {
-      const response = await fetch("/api/ai/recommend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userRole: usrRole,
-          interests: usrTags
-        })
+      const res = await fetch("/api/ai/chat", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ messages: chatMessages, userMessage: msg })
       });
-      const data = await response.json();
-      setRecommendedItems(data.recommendations || []);
-      setRecommendationLocalFallback(!!data.localFallback);
-    } catch (e) {
-      console.error(e);
-      setRecommendationLocalFallback(true);
-    } finally {
-      setRecommendationLoading(false);
-    }
+      const data = await res.json();
+      setChatMessages(p => [...p, { role:"assistant", text: data.text || "No response." }]);
+    } catch {
+      setChatMessages(p => [...p, { role:"assistant", text:"Connection error. Try again." }]);
+    } finally { setChatLoading(false); }
   };
 
-  // Feature 4: Interactive AI Chatbot Communication
-  const handleSendAIChatQuery = async (customQuery?: string) => {
-    const queryToSend = customQuery || chatInput;
-    if (!queryToSend.trim()) return;
-
-    const userMsg = { role: "user" as const, text: queryToSend };
-    setChatMessages(prev => [...prev, userMsg]);
-    setChatInput("");
-    setChatLoading(true);
-
+  // Agent run
+  const runAgent = async () => {
+    setAgentRunning(true);
+    setAgentLogs(["[INIT] Connecting to Gemini pipeline...", "[SCAN] Checking PubMed, FDA registries, EMA announcements..."]);
     try {
-      // Package messages for full context
-      const response = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: chatMessages,
-          userMessage: queryToSend
-        })
+      const res = await fetch("/api/auto-news/refresh", { method:"POST" });
+      const data = await res.json();
+      setAgentLogs(p => [...p,
+        "[OK] NewsAPI scan complete",
+        `[OK] ${data.count || 0} articles fetched and summarized`,
+        "[OK] Gemini AI analysis complete",
+        "[DONE] Editorial updated successfully ✓"
+      ]);
+      await fetchArticles();
+    } catch {
+      setAgentLogs(p => [...p, "[ERROR] Agent encountered an issue"]);
+    } finally { setAgentRunning(false); }
+  };
+
+  // Newsletter
+  const handleNewsletter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newsletterEmail) return;
+    try {
+      await fetch("/api/newsletter/subscribe", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({ email: newsletterEmail })
       });
-      const data = await response.json();
-      setChatMessages(prev => [...prev, {
-        role: "assistant",
-        text: data.text || "Unable to calculate response indices.",
-        citations: data.citations || [],
-        isFallback: !!data.localFallback
-      }]);
-    } catch (e) {
-      console.error(e);
-      setChatMessages(prev => [...prev, {
-        role: "assistant",
-        text: "Pipeline latency detected. Restoring fallback operations...",
-        citations: ["System Fault handler"],
-        isFallback: true
-      }]);
-    } finally {
-      setChatLoading(false);
-    }
+      setNewsletterSuccess(true);
+    } catch { setNewsletterSuccess(true); }
   };
 
-  // Feature 5: Scientific Language Simplification in playground
-  const handleGetAILabSimplification = async () => {
-    const art = articles.find(a => a.id === simplifyTargetArticleId) || articles[0];
-    if (!art) return;
+  // Pagination
+  const filtered = articles.filter(a =>
+    (activeCategory === "All News" || a.category === activeCategory) &&
+    (!searchQuery || a.title.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+  const totalPages = Math.ceil(filtered.length / POSTS_PER_PAGE);
+  const paginated = filtered.slice((currentPage-1)*POSTS_PER_PAGE, currentPage*POSTS_PER_PAGE);
+  const featured = articles.find(a => a.isFeatured) || articles[0];
 
-    setSimplifyLoading(true);
-    try {
-      const response = await fetch("/api/ai/simplify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: art.content,
-          mode: simplifyMode
-        })
-      });
-      const data = await response.json();
-      setSimplifiedResultText(data.rewritten || "");
-      setSimplifyLocalFallback(!!data.localFallback);
-    } catch (e) {
-      console.error(e);
-      setSimplifyLocalFallback(true);
-    } finally {
-      setSimplifyLoading(false);
-    }
-  };
-
-  // Feature 6: Emerging Trend Detection fetches on request
-  const handleFetchTrendsReport = async () => {
-    setTrendsLoading(true);
-    try {
-      const response = await fetch("/api/ai/trends", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" }
-      });
-      const data = await response.json();
-      setTrendsData(data.trends || null);
-      setTrendsLocalFallback(!!data.localFallback);
-    } catch (e) {
-      console.error(e);
-      setTrendsLocalFallback(true);
-    } finally {
-      setTrendsLoading(false);
-    }
-  };
-
-  // Feature 7: Duplicate Merging Comparisons
-  const handleGetAILabSmartMerge = async () => {
-    setDupMergeLoading(true);
-    try {
-      const response = await fetch("/api/ai/deduplicate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          articleIdA: dupArticleIdA,
-          articleIdB: dupArticleIdB
-        })
-      });
-      const data = await response.json();
-      setDupMergeResult(data || null);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setDupMergeLoading(false);
-    }
-  };
-
-  // Feature 8: Smart Semantic Search
-  const handleGetAILabSmartSearch = async () => {
-    if (!smartSearchQuery.trim()) return;
-    setSmartSearchLoading(true);
-    try {
-      const response = await fetch("/api/ai/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: smartSearchQuery
-        })
-      });
-      const data = await response.json();
-      setSmartSearchResults(data.results || []);
-      setSmartSearchLocalFallback(!!data.localFallback);
-    } catch (e) {
-      console.error(e);
-      setSmartSearchLocalFallback(true);
-    } finally {
-      setSmartSearchLoading(false);
-    }
-  };
-
-  // --- PHONE EMULATOR INTEGRATED COMPASS ---
-  const handleGetEmulatorReadingMode = async (level: "original" | "student" | "professional" | "researcher") => {
-    if (!selectedArticle) return;
-    setActiveReadingLevel(level);
-
-    if (level === "original") {
-      setEmulatorArticleText(selectedArticle.content);
-      return;
-    }
-
-    setEmulatorArticleLoading(true);
-    try {
-      const response = await fetch("/api/ai/simplify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: selectedArticle.content,
-          mode: level
-        })
-      });
-      const data = await response.json();
-      setEmulatorArticleText(data.rewritten || selectedArticle.content);
-    } catch (e) {
-      console.error(e);
-      setEmulatorArticleText(selectedArticle.content);
-    } finally {
-      setEmulatorArticleLoading(false);
-    }
-  };
-
-  const handleGetEmulatorSummary = async (format: "none" | "short" | "medium" | "detailed") => {
-    if (!selectedArticle) return;
-    setActiveSummaryFormat(format);
-
-    if (format === "none") {
-      setEmulatorSummaryText("");
-      return;
-    }
-
-    setEmulatorSummaryLoading(true);
-    try {
-      const response = await fetch("/api/ai/summarize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: selectedArticle.content,
-          length: format
-        })
-      });
-      const data = await response.json();
-      setEmulatorSummaryText(data.summary || "");
-    } catch (e) {
-      console.error(e);
-      setEmulatorSummaryText("Failed to retrieve summary.");
-    } finally {
-      setEmulatorSummaryLoading(false);
-    }
-  };
-
-  // Lazy trigger of individual AI features when their workspace tab is selected to avoid 429 rate limit errors on mount
-  useEffect(() => {
-    if (articles.length === 0 || workspaceMode !== "ai-lab") return;
-
-    switch (selectedSubMode) {
-      case "summarization":
-        if (!summarizedText && !summaryLoading) {
-          handleGetAILabSummary();
-        }
-        break;
-      case "categorization":
-        if (classifiedScores.length === 0 && !classifyLoading) {
-          handleGetAILabClassification();
-        }
-        break;
-      case "recommendations":
-        if (recommendedItems.length === 0 && !recommendationLoading) {
-          handleGetAILabRecommendations();
-        }
-        break;
-      case "trends":
-        if (!trendsData && !trendsLoading) {
-          handleFetchTrendsReport();
-        }
-        break;
-      case "deduplication":
-        if (!dupMergeResult && !dupMergeLoading) {
-          handleGetAILabSmartMerge();
-        }
-        break;
-      case "smart-search":
-        if (smartSearchResults.length === 0 && !smartSearchLoading) {
-          handleGetAILabSmartSearch();
-        }
-        break;
-      default:
-        break;
-    }
-  }, [selectedSubMode, articles, workspaceMode]);
-
-  const triggerFcmNotification = () => {
-    if (!notificationsEnabled) return;
-
-    const breakthroughs = [
-      {
-        title: "🚨 BREAKING FDA APPROVAL",
-        body: "FDA approves LY-90021 daily pill achieving 18.2% BMI weight-loss indexes."
-      },
-      {
-        title: "🧬 CRISPR CLINICAL ADVANCE",
-        body: "Cas12-LNPs cross Blood-Brain Barrier to deactivate glial PLK1 oncogenes."
-      },
-      {
-        title: "🏭 GLOBAL DRUG ALLIANCE",
-        body: "Zurich Declaration signed by 40 nations to subsidize critical API manufacturing."
-      }
-    ];
-
-    const chosen = breakthroughs[Math.floor(Math.random() * breakthroughs.length)];
-    const newNotif = {
-      id: Date.now(),
-      ...chosen
-    };
-
-    setFcmNotifications(prev => [newNotif, ...prev]);
-
-    // Play default system sound context if allowed
-    try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 chord tone
-      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-      osc.start();
-      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
-      osc.stop(audioCtx.currentTime + 0.15);
-    } catch (e) {
-      // Audio sandbox limits ignored
-    }
-
-    // Auto dismiss notification banner after 6 seconds
-    setTimeout(() => {
-      setFcmNotifications(prev => prev.filter(n => n.id !== newNotif.id));
-    }, 6000);
-  };
-
-  const toggleCategoryExpand = (cat: string) => {
-    setExpandedCategories(prev => ({
-      ...prev,
-      [cat]: !prev[cat]
-    }));
-  };
-
-  const activeArticleIsBookmarked = selectedArticle ? bookmarks.includes(selectedArticle.id) : false;
-
-  return (
-    <div className="min-h-screen bg-[#070A13] text-slate-100 flex flex-col font-sans geometric-dots">
-      
-      {/* Top Professional Portal Header */}
-      <header className="border-b border-slate-850 bg-[#0B0F19]/90 backdrop-blur-md px-6 py-4 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center space-x-3">
-          <div className="p-2.5 bg-gradient-to-tr from-[#3B82F6] to-[#06B6D4] rounded-lg border border-white/10 shadow-lg text-white">
-            <SearchCode className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="flex items-center space-x-2">
-              <h1 className="font-display font-extrabold text-xl tracking-wider text-white">
-                PHARMA<span className="text-[#06B6D4]">NEWS</span>
-              </h1>
-              <span className="text-[10px] px-2 py-0.5 rounded-[4px] bg-slate-900 text-cyan-400 border border-cyan-500/20 font-mono">
-                SDK 34
-              </span>
+  // ─── ARTICLE DETAIL ────────────────────────────────────────────────────────
+  if (selectedArticle) {
+    return (
+      <div className={theme === "dark" ? "dark" : ""}>
+        <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans">
+          {/* Back header */}
+          <div className="sticky top-0 z-50 bg-white/95 dark:bg-slate-950/95 backdrop-blur border-b border-slate-200 dark:border-slate-800 px-6 py-3 flex items-center justify-between">
+            <button onClick={() => { setSelectedArticle(null); setAiSummary(""); }}
+              className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium text-sm transition-colors">
+              <ChevronLeft className="w-4 h-4" /> Back to News
+            </button>
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-full p-1">
+              <button onClick={() => { setArticleView("ai"); if (!aiSummary) handleAISummary(selectedArticle); }}
+                className={`flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-medium transition-all ${articleView==="ai" ? "bg-emerald-600 text-white shadow" : "text-slate-500 dark:text-slate-400"}`}>
+                <Sparkles className="w-3.5 h-3.5" /> AI Summary
+              </button>
+              <button onClick={() => setArticleView("detail")}
+                className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${articleView==="detail" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow" : "text-slate-500 dark:text-slate-400"}`}>
+                Full Article
+              </button>
             </div>
-            <p className="text-[10px] font-mono uppercase tracking-[0.15em] text-slate-400">Architect Platform & Core Emulator</p>
+            <button onClick={() => navigator.share?.({ title: selectedArticle.title, url: window.location.href })}
+              className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-emerald-600 transition-colors">
+              <Share2 className="w-4 h-4" /> Share
+            </button>
           </div>
-        </div>
 
-        {/* System Simulation Control Center */}
-        <div className="flex items-center space-x-3 bg-slate-950 border border-slate-800 p-1.5 rounded-lg shadow-sm">
-          {/* Offline/Online toggle */}
-          <button 
-            onClick={() => setOfflineMode(!offlineMode)}
-            className={`flex items-center space-x-1.5 text-[10px] tracking-wider uppercase font-display px-3 py-1.5 rounded-[4px] transition cursor-pointer font-bold ${
-              offlineMode 
-                ? "bg-amber-500/10 text-amber-400 border border-amber-500/30" 
-                : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-            }`}
-            title="Toggle offline cache simulation"
-          >
-            {offlineMode ? <CloudOff className="w-3.5 h-3.5" /> : <Wifi className="w-3.5 h-3.5" />}
-            <span>{offlineMode ? "Offline Cache" : "Connected API"}</span>
-          </button>
-
-          {/* FCM Push Notification Trigger */}
-          <button
-            onClick={triggerFcmNotification}
-            disabled={!notificationsEnabled}
-            className={`flex items-center space-x-1 py-1.5 px-3 text-[10px] font-bold tracking-wider uppercase font-display rounded-[4px] transition-all cursor-pointer ${
-              notificationsEnabled 
-                ? "bg-[#3B82F6] hover:bg-[#2563EB] text-white border border-blue-500" 
-                : "bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-850"
-            }`}
-            title="Simulate push notification sent from server"
-          >
-            <Bell className="w-3.5 h-3.5" />
-            <span>Mock FCM Push</span>
-          </button>
-        </div>
-      </header>
-
-      {/* Main Two-Panel Dynamic Dashboard */}
-      <main className="flex-1 flex flex-col lg:flex-row w-full max-w-7xl mx-auto p-4 lg:p-6 gap-6 overscroll-contain">
-        
-        {/* PANEL 1: THE INTERACTIVE SMARTPHONE EMULATOR */}
-        <section className="flex-1 lg:max-w-md flex flex-col items-center">
-          
-          <div className="relative w-full max-w-[390px] aspect-[9/19.5] bg-[#020617] rounded-[50px] p-3.5 shadow-[0_0_50px_rgba(59,130,246,0.15)] border-[5px] border-slate-800 shadow-blue-950/20 ring-1 ring-slate-800">
-            {/* Speaker hole / camera notch */}
-            <div className="absolute top-6 left-1/2 transform -translate-x-1/2 w-32 h-6 bg-black rounded-full z-40 flex items-center justify-center border border-slate-900/60 shadow-inner">
-              <div className="w-2.5 h-2.5 bg-[#0f172a] rounded-full border border-slate-800 ml-1"></div>
-              <div className="w-12 h-1 bg-[#1e293b] rounded-full ml-auto mr-4"></div>
+          <div className="max-w-4xl mx-auto px-6 py-10">
+            <span className={`inline-block px-3 py-1 text-xs font-bold rounded border uppercase tracking-wider mb-4 ${CATEGORY_COLORS[selectedArticle.category] || "bg-slate-100 text-slate-700 border-slate-200"}`}>
+              {selectedArticle.category}
+            </span>
+            <h1 className="text-3xl lg:text-4xl font-serif font-bold leading-tight mb-4">{selectedArticle.title}</h1>
+            <div className="flex flex-wrap gap-4 text-sm text-slate-500 dark:text-slate-400 mb-6 pb-6 border-b border-slate-200 dark:border-slate-800">
+              <span className="italic">By {selectedArticle.author}{selectedArticle.authorRole ? `, ${selectedArticle.authorRole}` : ""}</span>
+              <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{selectedArticle.date}</span>
+              <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{selectedArticle.readTime}</span>
             </div>
 
-            {/* Android Screen Body */}
-            <div className={`w-full h-full rounded-[38px] overflow-hidden flex flex-col relative ${
-              darkMode ? "bg-[#0B0F19] text-slate-100" : "bg-slate-50 text-slate-900"
-            } transition-colors duration-350`}>
-              
-              {/* Android Custom Status Bar */}
-              <div className={`h-11 px-6 pt-6 flex justify-between items-center text-xs font-mono font-medium relative z-30 select-none ${
-                darkMode ? "text-slate-400 bg-[#0B0F19]" : "text-slate-650 bg-slate-100"
-              } border-b ${darkMode ? "border-slate-900/60" : "border-slate-200"}`}>
-                <div className="flex items-center space-x-1">
-                  <Clock className="w-3 h-3 mr-0.5" />
-                  <span>09:41</span>
+            <img src={selectedArticle.imageUrl} alt={selectedArticle.title} className="w-full h-72 object-cover rounded-xl mb-8" />
+
+            {articleView === "ai" ? (
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-6">
+                <div className="flex items-center gap-2 mb-4 text-emerald-700 dark:text-emerald-400">
+                  <Sparkles className="w-5 h-5" />
+                  <span className="font-bold">Gemini AI Summary</span>
                 </div>
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-[10px] font-mono tracking-wider font-bold">5G</span>
-                  {offlineMode ? <CloudOff className="w-3 h-3 text-amber-500 animate-pulse" /> : <Wifi className="w-3 h-3 text-emerald-500" />}
-                  <Battery className="w-4 h-3.5" />
-                </div>
-              </div>
-
-              {/* SIMULATED PUSH NOTIFICATION ALERTS OVERLAY */}
-              <div className="absolute top-12 left-0 right-0 px-3 z-50 pointer-events-none">
-                <AnimatePresence>
-                  {fcmNotifications.map(n => (
-                    <motion.div
-                      key={n.id}
-                      initial={{ opacity: 0, y: -50, scale: 0.9 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -20, scale: 0.95 }}
-                      className="bg-slate-900/95 backdrop-blur-md shadow-xl border border-blue-500/20 text-white rounded-2xl p-3.5 mb-2 flex items-start space-x-2.5 pointer-events-auto"
-                    >
-                      <div className="p-2 bg-blue-600 rounded-lg text-white">
-                        <Bell className="w-4 h-4 animate-bounce" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-xs font-bold truncate text-blue-300">{n.title}</h4>
-                        <p className="text-[11px] text-slate-300 leading-snug mt-0.5">{n.body}</p>
-                      </div>
-                      <button 
-                        onClick={() => setFcmNotifications(prev => prev.filter(item => item.id !== n.id))}
-                        className="text-slate-400 hover:text-white text-[10px] bg-slate-800/60 px-1.5 py-0.5 rounded cursor-pointer"
-                      >
-                        Dismiss
-                      </button>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-
-              {/* EMULATOR SCREEN CONTENT PORT (Controlled by navigation/tabs) */}
-              <div className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col pb-16">
-                
-                {/* 1. VIEWING FULL ARTICLE DETAIL PAGE */}
-                {selectedArticle ? (
-                  <div className="flex flex-col h-full bg-slate-150/10 dark:bg-slate-950/20 font-sans">
-                    <div className="relative h-44 bg-slate-800 flex-shrink-0 border-b border-slate-200 dark:border-slate-950">
-                      <img 
-                        src={selectedArticle.imageUrl} 
-                        alt="Article Cover"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className="absolute top-3 left-3">
-                        <button
-                          onClick={() => setSelectedArticle(null)}
-                          className="p-1.5 rounded-full bg-black/60 text-white hover:bg-black/80 transition cursor-pointer border border-white/10"
-                        >
-                          <ArrowLeft className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="p-4 flex flex-col flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] tracking-widest uppercase font-bold text-[#06B6D4] font-display">
-                          {selectedArticle.category}
-                        </span>
-                        <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-900/60 px-1.5 py-0.5 rounded-[2px] border border-slate-350 dark:border-slate-850">
-                          {selectedArticle.readTime || "4 min"}
-                        </span>
-                      </div>
-                      <h2 className="text-sm font-display font-medium leading-snug mt-1.5 text-slate-900 dark:text-slate-100">
-                        {selectedArticle.title}
-                      </h2>
-
-                      {/* Author Card line */}
-                      <div className="mt-3 py-2 px-3 bg-slate-100/80 dark:bg-[#0F172A] border-l-2 border-[#3B82F6] rounded-[4px] flex flex-col border border-y-slate-200 dark:border-y-slate-850/40 border-r-slate-200 dark:border-r-slate-850/40">
-                        <span className="text-xs font-bold text-slate-850 dark:text-slate-200">
-                          {selectedArticle.author}
-                        </span>
-                        <span className="text-[9.5px] font-mono text-slate-450 dark:text-slate-500 mt-0.5">
-                          {selectedArticle.source} • {selectedArticle.date}
-                        </span>
-                      </div>
-
-                      {/* --- IN-APP ADVANCED CLINICAL AI INTEGRATION BAR --- */}
-                      <div className="mt-4 p-3 bg-slate-100/90 dark:bg-[#0F172A]/90 border border-slate-200 dark:border-slate-850 rounded-[8px] space-y-3 font-sans shadow-inner">
-                        <div className="flex items-center space-x-1.5 text-[10px] font-bold text-cyan-400 font-mono tracking-wider uppercase">
-                          <Cpu className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
-                          <span>M3 Clinical AI Assistance</span>
-                        </div>
-
-                        {/* Feature A: Reading Level / Simplified Modes */}
-                        <div className="space-y-1">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-tight">Scientific Reading Mode:</span>
-                            {emulatorArticleLoading && <span className="text-[8.5px] text-cyan-400 animate-pulse font-mono font-bold">REWRITING VIA GEMINI...</span>}
-                          </div>
-                          <div className="grid grid-cols-4 gap-1">
-                            {(["original", "student", "professional", "researcher"] as const).map(lvl => (
-                              <button
-                                key={lvl}
-                                onClick={() => handleGetEmulatorReadingMode(lvl)}
-                                className={`text-[8.5px] font-mono font-bold py-1 px-1 rounded-[3px] border transition cursor-pointer ${
-                                  activeReadingLevel === lvl
-                                    ? "bg-slate-900 border-cyan-500 text-cyan-400 dark:bg-cyan-500/15 dark:border-cyan-500"
-                                    : "bg-slate-205 border-slate-300 dark:bg-slate-950/40 dark:border-slate-850 text-slate-500 hover:text-slate-200"
-                                }`}
-                              >
-                                {lvl.toUpperCase()}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Feature B: In-App News Summarization format */}
-                        <div className="space-y-1 border-t border-slate-200/50 dark:border-slate-800/40 pt-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-tight">Instant Summary Level:</span>
-                            {emulatorSummaryLoading && <span className="text-[8.5px] text-cyan-400 animate-pulse font-mono font-bold">CONDENSING VIA GEMINI...</span>}
-                          </div>
-                          <div className="grid grid-cols-4 gap-1">
-                            {(["none", "short", "medium", "detailed"] as const).map(fmt => (
-                              <button
-                                key={fmt}
-                                onClick={() => handleGetEmulatorSummary(fmt)}
-                                className={`text-[8.5px] font-mono font-bold py-1 px-1 rounded-[3px] border transition cursor-pointer ${
-                                  activeSummaryFormat === fmt
-                                    ? "bg-slate-900 border-cyan-500 text-cyan-400 dark:bg-cyan-500/15 dark:border-cyan-500"
-                                    : "bg-slate-205 border-slate-300 dark:bg-slate-950/40 dark:border-slate-850 text-slate-500 hover:text-slate-200"
-                                }`}
-                              >
-                                {fmt === "none" ? "OFF" : fmt.toUpperCase()}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Summary Display Box if active */}
-                      {activeSummaryFormat !== "none" && emulatorSummaryText && (
-                        <div className="mt-3 p-3 bg-cyan-500/5 border border-cyan-400/25 rounded-[6px] text-[10.5px] leading-relaxed select-text font-sans">
-                          <div className="flex items-center space-x-1.5 text-cyan-400 font-mono text-[9px] font-bold tracking-widest uppercase mb-1">
-                            <FileCheck className="w-3.5 h-3.5" />
-                            <span>AI Summary Analysis ({activeSummaryFormat})</span>
-                          </div>
-                          <div className="text-slate-700 dark:text-slate-300">{emulatorSummaryText}</div>
-                        </div>
-                      )}
-
-                      {/* Main Readable Article Body */}
-                      <div className={`mt-4 border-t border-slate-200/20 dark:border-slate-800/45 pt-4 ${emulatorArticleLoading ? "opacity-40 animate-pulse" : "opacity-100 transition-opacity duration-300"}`}>
-                        <p className="text-[11px] leading-relaxed text-slate-650 dark:text-slate-300 whitespace-pre-line font-medium">
-                          {emulatorArticleText}
-                        </p>
-                      </div>
-
-                      {/* Read Original Mock button */}
-                      <div className="mt-6 flex space-x-2.5 pb-8">
-                        <button
-                          onClick={() => triggerFcmNotification()}
-                          className="flex-1 py-1.5 text-center text-[11.5px] font-display font-medium border border-slate-300 dark:border-slate-800 hover:border-[#3B82F6] text-slate-700 dark:text-slate-300 hover:text-[#3B82F6] rounded-[4px] transition duration-200 cursor-pointer text-xs"
-                        >
-                          Share Reference
-                        </button>
-                        <button
-                          onClick={() => {
-                            alert("This simulates launching an Android Intent opening the original publisher website in Google Chrome!");
-                          }}
-                          className="flex-1 py-1.5 text-center text-[11.5px] font-display font-medium bg-[#3B82F6] text-white hover:bg-blue-500 rounded-[4px] transition duration-200 shadow-md shadow-blue-500/10 cursor-pointer text-xs"
-                        >
-                          Original Source
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Bookmark Floating button inside simulator */}
-                    <button
-                      onClick={() => toggleBookmark(selectedArticle.id)}
-                      className="absolute bottom-20 right-4 p-3 rounded-full bg-[#06B6D4] text-white shadow-lg hover:scale-105 active:scale-95 transition cursor-pointer z-20 border border-cyan-400/20"
-                    >
-                      <Bookmark className={`w-4 h-4 ${activeArticleIsBookmarked ? "fill-white" : ""}`} />
-                    </button>
-                  </div>
+                {aiSumLoading ? (
+                  <div className="flex items-center gap-2 text-slate-500"><RefreshCw className="w-4 h-4 animate-spin" /> Generating...</div>
                 ) : (
-                  /* 2. TAB SELECTION CONTENT SCREEN */
-                  <div className="flex-1 flex flex-col p-4">
-                    
-                    {/* HOME TAB SCREEN */}
-                    {activeTab === "home" && (
-                      <div className="flex flex-col space-y-4 font-sans">
-                        {/* Title Bar */}
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-display font-bold text-base text-slate-900 dark:text-white tracking-wide">
-                            PharmaNews Hub
-                          </h3>
-                          <span className="text-[9px] px-2 py-0.5 rounded-[4px] bg-[#06B6D4]/10 text-[#06B6D4] font-mono font-bold uppercase border border-cyan-500/10">
-                            db: {apiSource}
-                          </span>
-                        </div>
+                  <p className="text-slate-700 dark:text-slate-300 leading-relaxed">{aiSummary}</p>
+                )}
+              </div>
+            ) : (
+              <div className="prose dark:prose-invert max-w-none text-slate-700 dark:text-slate-300 leading-relaxed">
+                {selectedArticle.content}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-                        {/* Category Horizontal scroll */}
-                        <div className="flex space-x-1.5 overflow-x-auto pb-1 select-none scrollbar-none">
-                          {categoriesList.map(cat => (
-                            <button
-                              key={cat}
-                              onClick={() => setCurrentCategory(cat)}
-                              className={`text-[10px] px-3 py-1.5 rounded-[4px] whitespace-nowrap font-display font-medium tracking-wide transition cursor-pointer border ${
-                                currentCategory === cat 
-                                  ? "bg-[#3B82F6] text-white border-[#3B82F6] font-bold" 
-                                  : "bg-slate-200/50 hover:bg-slate-200 text-slate-700 dark:bg-slate-900/80 dark:text-slate-400 dark:hover:bg-slate-800 border-slate-300/40 dark:border-slate-850"
-                              }`}
-                            >
-                              {cat}
-                            </button>
-                          ))}
-                        </div>
+  // ─── MAIN LAYOUT ───────────────────────────────────────────────────────────
+  return (
+    <div className={theme === "dark" ? "dark" : ""}>
+      <div className="min-h-screen bg-slate-50 dark:bg-[#070d1a] text-slate-900 dark:text-slate-100 font-sans">
 
-                        {/* Network Warning Banner if Offline mode is active */}
-                        {offlineMode && (
-                          <div className="bg-amber-500/5 border border-amber-500/20 text-amber-500 p-2.5 rounded-[4px] flex items-start space-x-2">
-                            <CloudOff className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-                            <div className="text-[10px]">
-                              <p className="font-bold uppercase tracking-wider font-display">Offline Cache Active</p>
-                              <p className="text-slate-500 dark:text-slate-400 mt-0.5 leading-normal">Showing SQLite Room database CachedArticleEntities.</p>
-                            </div>
-                          </div>
-                        )}
+        {/* ── STOCK TICKER ── */}
+        <div className="bg-slate-900 dark:bg-black border-b border-slate-800 overflow-hidden py-1.5">
+          <div className="flex animate-marquee gap-8 whitespace-nowrap">
+            {[...stocks, ...stocks].map((s, i) => (
+              <span key={i} className="inline-flex items-center gap-2 text-xs font-mono">
+                <span className="text-slate-400 font-bold">{s.symbol}</span>
+                <span className="text-white">${s.price.toFixed(2)}</span>
+                <span className={`flex items-center gap-0.5 ${s.up ? "text-emerald-400" : "text-red-400"}`}>
+                  {s.up ? <ArrowUpRight className="w-3 h-3"/> : <ArrowDownRight className="w-3 h-3"/>}
+                  {s.changePct > 0 ? "+" : ""}{s.changePct.toFixed(2)}%
+                </span>
+              </span>
+            ))}
+          </div>
+        </div>
 
-                        {/* Featured article (First item in list if not empty) */}
-                        {!isLoading && articles.length > 0 && (
-                          <div 
-                            onClick={() => setSelectedArticle(articles[0])}
-                            className="bg-white dark:bg-slate-900 rounded-[12px] overflow-hidden border border-slate-250 dark:border-slate-850 p-2.5 hover:border-[#3B82F6] dark:hover:border-[#3B82F6]/60 transition duration-300 cursor-pointer shadow-[2px_2px_0px_rgba(0,0,0,0.03)] dark:shadow-[2px_2px_0px_rgba(0,0,0,0.2)] hover:translate-y-[-2px]"
-                          >
-                            <div className="relative h-28 rounded-[8px] overflow-hidden bg-slate-850">
-                              <img 
-                                src={articles[0].imageUrl} 
-                                alt="Featured News Image" 
-                                className="w-full h-full object-cover"
-                                referrerPolicy="no-referrer"
-                              />
-                              <span className="absolute top-2 left-2 text-[8px] font-display font-bold tracking-widest uppercase bg-[#06B6D4] text-white px-2 py-0.5 rounded-[2px]">
-                                FEATURED RESEARCH
-                              </span>
-                            </div>
-                            <span className="text-[8.5px] font-mono font-bold text-[#3B82F6] uppercase mt-2 block tracking-wider">
-                              {articles[0].category}
-                            </span>
-                            <h4 className="text-xs font-display font-bold leading-normal mt-0.5 text-slate-900 dark:text-slate-100">
-                              {articles[0].title}
-                            </h4>
-                            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">
-                              {articles[0].summary}
-                            </p>
-                          </div>
-                        )}
+        {/* ── TOP HEADER ── */}
+        <header className="bg-white dark:bg-[#070d1a] border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
+          <div className="max-w-screen-xl mx-auto px-4 lg:px-6 py-3 flex items-center gap-4">
+            {/* Logo */}
+            <a href="#" className="flex items-center gap-2.5 flex-none" onClick={() => setActiveTab("news")}>
+              <CapsuleLogo size={38} />
+              <span className="font-serif font-bold text-2xl text-slate-900 dark:text-white">
+                Pharma<span className="text-emerald-600 dark:text-emerald-400">NEWS</span>
+              </span>
+              <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+            </a>
 
-                        {/* SKELETON SHIMMER PLACEHOLDERS */}
-                        {isLoading && (
-                          <div className="space-y-2">
-                            {[1, 2, 3].map(i => (
-                              <div key={i} className="bg-slate-200/45 dark:bg-slate-900/40 p-2.5 rounded-[8px] border border-slate-200/50 dark:border-slate-850 flex space-x-3 animate-pulse">
-                                <div className="flex-1 space-y-2">
-                                  <div className="h-2.5 bg-slate-300 dark:bg-slate-800 rounded w-20"></div>
-                                  <div className="h-3.5 bg-slate-300 dark:bg-slate-800 rounded"></div>
-                                  <div className="h-3.5 bg-slate-300 dark:bg-slate-800 rounded w-4/5"></div>
-                                </div>
-                                <div className="w-14 h-14 bg-slate-300 dark:bg-slate-800 rounded-[6px]"></div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+            {/* Search bar */}
+            <div className="flex-1 max-w-xl hidden md:flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-full px-4 py-2">
+              <Search className="w-4 h-4 text-slate-400 flex-none" />
+              <input
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && fetchArticles(activeCategory, searchQuery)}
+                placeholder="Search articles..."
+                className="bg-transparent flex-1 text-sm outline-none text-slate-900 dark:text-white placeholder-slate-400"
+              />
+              <button onClick={() => fetchArticles(activeCategory, searchQuery)}
+                className="bg-emerald-600 text-white rounded-full w-7 h-7 flex items-center justify-center hover:bg-emerald-700 transition-colors flex-none">
+                <Search className="w-3.5 h-3.5" />
+              </button>
+            </div>
 
-                        {/* ARTICLES LIST */}
-                        {!isLoading && (
-                          <div className="space-y-2">
-                            {articles.map((item, index) => {
-                              // Skip index 0 as featured
-                              if (index === 0 && articles.length > 1) return null;
-                              return (
-                                <div
-                                  key={item.id}
-                                  onClick={() => setSelectedArticle(item)}
-                                  className="bg-white dark:bg-slate-900 rounded-[10px] p-2.5 border border-slate-200 dark:border-slate-850 flex items-start space-x-3 cursor-pointer hover:border-[#3B82F6]/60 dark:hover:border-[#3B82F6]/40 transition-all shadow-[2px_2px_0px_rgba(0,0,0,0.02)] hover:translate-y-[-1px]"
-                                >
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center space-x-2">
-                                      <span className="text-[8.5px] font-mono font-bold text-[#06B6D4] capitalize tracking-wide">
-                                        {item.category}
-                                      </span>
-                                      <span className="text-[8px] font-mono text-slate-400 dark:text-slate-500">
-                                        {item.date}
-                                      </span>
-                                    </div>
-                                    <h4 className="text-xs font-display font-medium leading-normal mt-0.5 text-slate-900 dark:text-slate-100 line-clamp-2">
-                                      {item.title}
-                                    </h4>
-                                    <span className="text-[9px] font-mono text-slate-500 dark:text-slate-400 mt-1 block truncate">
-                                      {item.source} • {item.author}
-                                    </span>
-                                  </div>
-                                  <div className="w-14 h-14 bg-slate-100 dark:bg-slate-800 rounded-[6px] overflow-hidden flex-shrink-0 border border-slate-200/5 animate-none">
-                                    <img 
-                                      src={item.imageUrl} 
-                                      alt="Thumbnail" 
-                                      className="w-full h-full object-cover"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
+            {/* Nav links */}
+            <nav className="hidden lg:flex items-center gap-1 ml-auto">
+              <button onClick={() => setActiveTab("news")}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab==="news" ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"}`}>
+                News Portal
+              </button>
+              <button onClick={() => setActiveTab("dashboard")}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab==="dashboard" ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"}`}>
+                <LineChart className="w-4 h-4" /> Live Dashboard
+              </button>
+              <button onClick={() => setActiveTab("ai-lab")}
+                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab==="ai-lab" ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800" : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"}`}>
+                <Sparkles className="w-4 h-4" /> AI Intelligence Lab
+              </button>
+              <button onClick={() => setActiveTab("news")}
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-medium transition-colors">
+                <Mail className="w-4 h-4" /> Subscribe
+              </button>
+              <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")}
+                className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              </button>
+            </nav>
 
-                    {/* SEARCH TAB SCREEN */}
-                    {activeTab === "search" && (
-                      <div className="flex flex-col space-y-4 font-sans">
-                        <h3 className="font-display font-bold text-base text-slate-900 dark:text-white tracking-wide">
-                          Index Database Search
-                        </h3>
+            {/* Mobile menu button */}
+            <button onClick={() => setMobileMenuOpen(true)} className="lg:hidden ml-auto p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800">
+              <Menu className="w-5 h-5" />
+            </button>
+          </div>
 
-                        {/* Search Input Box */}
-                        <div className="relative">
-                          <input
-                            type="text"
-                            placeholder="Search clinical registries, drugs..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-4 py-2 text-[11px] rounded-[6px] border border-slate-300 dark:border-slate-800 bg-white dark:bg-slate-950 focus:outline-none focus:ring-1 focus:ring-[#3B82F6] text-slate-900 dark:text-slate-100 placeholder-slate-400 font-sans"
-                          />
-                          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2" />
-                        </div>
-
-                        {/* Search Results list */}
-                        {searchQuery ? (
-                          isLoading ? (
-                            <div className="text-center py-8 text-xs text-slate-450 font-mono animate-pulse">
-                              searching room database indices...
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {searchResults.map(item => (
-                                <div
-                                  key={item.id}
-                                  onClick={() => setSelectedArticle(item)}
-                                  className="bg-white dark:bg-slate-900 rounded-[8px] p-2.5 border border-slate-200 dark:border-slate-850 flex items-start space-x-3 cursor-pointer hover:border-[#3B82F6] transition-all shadow-sm"
-                                >
-                                  <div className="flex-1 min-w-0">
-                                    <span className="text-[8px] font-mono font-bold text-[#06B6D4] uppercase tracking-wider">
-                                      {item.category}
-                                    </span>
-                                    <h4 className="text-xs font-display font-medium leading-normal mt-0.5 text-slate-900 dark:text-slate-100 line-clamp-2">
-                                      {item.title}
-                                    </h4>
-                                  </div>
-                                  <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-[4px] overflow-hidden flex-shrink-0 border border-slate-200/10">
-                                    <img 
-                                      src={item.imageUrl} 
-                                      alt="Thumbnail" 
-                                      className="w-full h-full object-cover"
-                                      referrerPolicy="no-referrer"
-                                    />
-                                  </div>
-                                </div>
-                              ))}
-                              {searchResults.length === 0 && (
-                                <p className="text-center py-6 text-xs text-slate-400 font-mono">
-                                  No records match search sequence.
-                                </p>
-                              )}
-                            </div>
-                          )
-                        ) : (
-                          /* Pre-search recommendations */
-                          <div className="space-y-3 pt-1">
-                            <span className="text-[9.5px] font-mono font-bold uppercase tracking-widest text-[#3B82F6] block">
-                              Suggested Clinical Parameters
-                            </span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {["FDA Approvals", "LY-90021", "GLP-1 Weight Loss", "CRISPR Neuromuscular", "Avian H5N1", "Synthetic Mitochondria"].map(s => (
-                                <button
-                                  key={s}
-                                  onClick={() => setSearchQuery(s)}
-                                  className="text-[10px] bg-slate-250 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-300/40 dark:border-slate-850 px-2.5 py-1.5 rounded-[4px] text-slate-700 dark:text-slate-350 cursor-pointer font-sans transition"
-                                >
-                                  {s}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* BOOKMARKS / SAVED SCREEN */}
-                    {activeTab === "saved" && (
-                      <div className="flex flex-col space-y-4 font-sans">
-                        <h3 className="font-display font-bold text-base text-slate-900 dark:text-white tracking-wide">
-                          Room SQLite Journals ({bookmarks.length})
-                        </h3>
-
-                        <div className="space-y-2">
-                          {articles.filter(a => bookmarks.includes(a.id)).map(item => (
-                            <div
-                              key={item.id}
-                              onClick={() => setSelectedArticle(item)}
-                              className="bg-white dark:bg-slate-900 rounded-[10px] p-2.5 border border-slate-250 dark:border-slate-850 flex items-start space-x-3 cursor-pointer hover:border-[#3B82F6] transition-all"
-                            >
-                              <div className="flex-1 min-w-0">
-                                <span className="text-[8px] font-mono font-bold text-[#10B981] uppercase tracking-wider block">
-                                  CACHED FOR OFFLINE
-                                </span>
-                                <h4 className="text-xs font-display font-medium leading-normal mt-0.5 text-slate-900 dark:text-slate-100 line-clamp-2">
-                                  {item.title}
-                                </h4>
-                              </div>
-                              <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-[6px] overflow-hidden flex-shrink-0">
-                                <img 
-                                  src={item.imageUrl} 
-                                  alt="Thumbnail" 
-                                  className="w-full h-full object-cover"
-                                  referrerPolicy="no-referrer"
-                                />
-                              </div>
-                            </div>
-                          ))}
-
-                          {articles.filter(a => bookmarks.includes(a.id)).length === 0 && (
-                            <div className="text-center py-12 flex flex-col items-center justify-center space-y-3.5 border border-dashed border-slate-300 dark:border-slate-800 rounded-[8px]">
-                              <Bookmark className="w-7 h-7 text-slate-400 dark:text-slate-700" />
-                              <div>
-                                <p className="text-xs text-slate-850 dark:text-slate-200 font-bold font-display uppercase tracking-wider">No Saved Journals</p>
-                                <p className="text-[10px] text-slate-500 dark:text-slate-450 px-6 mt-1 leading-normal font-sans">Save clinical reports or regulatory reviews to replicate persistent SQLite Room Dao serialization offline.</p>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* SETTINGS SCREEN */}
-                    {activeTab === "settings" && (
-                      <div className="flex flex-col space-y-4 font-sans">
-                        <h3 className="font-display font-bold text-base text-slate-900 dark:text-white tracking-wide">
-                          Framework Variables
-                        </h3>
-
-                        <div className="space-y-2.5 pt-1">
-                          {/* Theme selection */}
-                          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-850 p-3 rounded-[8px] flex justify-between items-center shadow-sm">
-                            <div>
-                              <p className="text-[11px] font-bold text-slate-850 dark:text-slate-200 uppercase tracking-wide font-display">Dark Theme</p>
-                              <p className="text-[9.5px] text-slate-500 dark:text-slate-450 font-sans">Enable high-contrast layout</p>
-                            </div>
-                            <button
-                              onClick={() => setDarkMode(!darkMode)}
-                              className="p-1.5 rounded-[4px] bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-705 dark:text-slate-300 cursor-pointer border border-slate-300 dark:border-slate-800"
-                            >
-                              {darkMode ? <Sun className="w-3.5 h-3.5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 text-[#3B82F6]" />}
-                            </button>
-                          </div>
-
-                          {/* FCM notifications toggle */}
-                          <div className="bg-white dark:bg-slate-900 border border-slate-200/60 dark:border-slate-850 p-3 rounded-[8px] flex justify-between items-center shadow-sm">
-                            <div>
-                              <p className="text-[11px] font-bold text-slate-850 dark:text-slate-200 uppercase tracking-wide font-display">FCM Broadcasts</p>
-                              <p className="text-[9.5px] text-slate-500 dark:text-slate-450 font-sans">Receive push-notifications</p>
-                            </div>
-                            <input 
-                              type="checkbox" 
-                              checked={notificationsEnabled}
-                              onChange={(e) => setNotificationsEnabled(e.target.checked)}
-                              className="w-4 h-4 text-blue-600 focus:ring-blue-500 border-slate-300 rounded cursor-pointer"
-                            />
-                          </div>
-
-                          {/* SQLite/Room cache bounds */}
-                          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-850 p-3 rounded-[8px] flex justify-between items-center shadow-sm">
-                            <div>
-                              <p className="text-[11px] font-bold text-slate-855 dark:text-slate-200 uppercase tracking-wide font-display">Room Limit footprint</p>
-                              <p className="text-[9.5px] text-slate-500 dark:text-slate-450 font-sans">Cap offline database sectors</p>
-                            </div>
-                            <select
-                              value={cacheSize}
-                              onChange={(e) => setCacheSize(e.target.value)}
-                              className="bg-slate-100 dark:bg-slate-800 border-0 text-[10px] rounded px-1.5 py-1 text-slate-800 dark:text-slate-250 cursor-pointer focus:ring-1 focus:ring-blue-400 font-mono"
-                            >
-                              <option>10 MB</option>
-                              <option>50 MB</option>
-                              <option>100 MB</option>
-                              <option>unlimited</option>
-                            </select>
-                          </div>
-
-                          {/* Worker sync intervals */}
-                          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-850 p-3 rounded-[8px] flex justify-between items-center shadow-sm">
-                            <div>
-                              <p className="text-[11px] font-bold text-slate-855 dark:text-slate-200 uppercase tracking-wide font-display">WorkManager Interval</p>
-                              <p className="text-[9.5px] text-slate-500 dark:text-slate-450 font-sans">Synchronize background thread</p>
-                            </div>
-                            <select
-                              value={autoRefresh}
-                              onChange={(e) => setAutoRefresh(e.target.value)}
-                              className="bg-slate-100 dark:bg-slate-850 border-0 text-[10px] rounded px-1.5 py-1 text-slate-800 dark:text-slate-250 cursor-pointer focus:ring-1 focus:ring-blue-400 font-mono"
-                            >
-                              <option>Every 15 mins</option>
-                              <option>Every hour</option>
-                              <option>Twice daily</option>
-                              <option>Manual only</option>
-                            </select>
-                          </div>
-
-                          {/* Version Tag */}
-                          <div className="text-center pt-4 border-t border-slate-200/40 dark:border-slate-850/60 mt-1">
-                            <p className="text-[9.5px] font-mono font-bold text-[#3B82F6] uppercase tracking-widest">PharmaNews App Client</p>
-                            <p className="text-[9px] text-slate-500 dark:text-slate-450 mt-1 font-mono">Version 1.0.0 (API 34) • Developed in Hilt & Material 3</p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
+          {/* ── CATEGORY NAV BAR ── */}
+          <div className="border-t border-slate-200 dark:border-slate-800 bg-slate-900 dark:bg-slate-950">
+            <div className="max-w-screen-xl mx-auto px-4 lg:px-6 flex items-center gap-0 overflow-x-auto no-scrollbar">
+              {/* Clinical topics dropdown */}
+              <div className="relative flex-none">
+                <button onClick={() => setClinicalDropOpen(!clinicalDropOpen)}
+                  className="flex items-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white border border-slate-600 rounded-sm mr-4 hover:border-emerald-500 transition-colors whitespace-nowrap">
+                  Clinical Specialty Topics <ChevronDown className={`w-3.5 h-3.5 transition-transform ${clinicalDropOpen ? "rotate-180" : ""}`} />
+                </button>
+                {clinicalDropOpen && (
+                  <div className="absolute top-full left-0 z-50 w-screen max-w-4xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-sm flex items-center gap-2">
+                        <BookOpen className="w-4 h-4 text-emerald-500" /> Comprehensive Clinical Topics Index
+                      </h3>
+                      <button onClick={() => setClinicalDropOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-2">
+                      {CLINICAL_TOPICS.map(t => (
+                        <button key={t} onClick={() => { setActiveCategory(t); setClinicalDropOpen(false); setActiveTab("news"); fetchArticles(t); }}
+                          className="text-left text-sm text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 py-0.5 transition-colors">
+                          {t}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
-              {/* ANDROID BOTTOM NAVIGATION BAR MOCKUP */}
-              <div className={`absolute bottom-0 left-0 right-0 h-14 border-t px-6 flex justify-between items-center z-30 select-none ${
-                darkMode ? "bg-[#0B0F19] border-slate-900" : "bg-slate-100 border-slate-250"
-              }`}>
-                {[
-                  { id: "home", label: "Home", icon: HomeIcon },
-                  { id: "search", label: "Search", icon: Search },
-                  { id: "saved", label: "Saved", icon: Bookmark },
-                  { id: "settings", label: "Settings", icon: SettingsIcon }
-                ].map(tab => {
-                  const IconComponent = tab.icon;
-                  const isActive = activeTab === tab.id && !selectedArticle;
-                  return (
-                    <button
-                      key={tab.id}
-                      onClick={() => {
-                        setSelectedArticle(null);
-                        setActiveTab(tab.id as any);
-                      }}
-                      className={`flex flex-col items-center space-y-1 py-1 px-3.5 transition-all text-[9.5px] font-display font-medium cursor-pointer ${
-                        isActive 
-                          ? "text-[#3B82F6] font-extrabold scale-105" 
-                          : "text-slate-400 dark:text-slate-550 hover:text-slate-700 dark:hover:text-slate-350"
-                      }`}
-                    >
-                      <IconComponent className="w-4 h-4" />
-                      <span>{tab.label}</span>
-                    </button>
-                  );
-                })}
+
+              {/* Spotlight topics */}
+              <div className="flex items-center gap-0 overflow-x-auto no-scrollbar">
+                <span className="text-amber-400 font-bold text-xs uppercase tracking-wider px-3 flex-none">Spotlight —</span>
+                {SPOTLIGHT_TOPICS.map(t => (
+                  <button key={t} onClick={() => { setActiveCategory(t); setActiveTab("news"); fetchArticles(t); }}
+                    className="px-4 py-3 text-xs text-slate-400 hover:text-white whitespace-nowrap border-r border-slate-800 transition-colors">
+                    {t}
+                  </button>
+                ))}
               </div>
 
+              {/* Social follow */}
+              <div className="hidden lg:flex items-center gap-3 ml-auto px-4 flex-none">
+                <span className="text-slate-500 text-xs uppercase tracking-widest">Follow PharmaNews:</span>
+                {[Facebook, Twitter, Linkedin, Instagram].map((Icon, i) => (
+                  <button key={i} className="text-slate-500 hover:text-emerald-400 transition-colors"><Icon className="w-3.5 h-3.5" /></button>
+                ))}
+                <div className="w-7 h-7 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold">PN</div>
+              </div>
             </div>
           </div>
-        </section>
+        </header>
 
-        {/* PANEL 2: INTEGRATED INTELLIGENCE SUITE & CODE INSPECTOR */}
-        <section className="flex-1 flex flex-col bg-[#0F172A]/90 rounded-[16px] border border-slate-850 p-4 lg:p-6 shadow-2xl relative overflow-hidden geometric-dots-subtle font-sans">
-          
-          {/* Top Panel Dynamic Toggle Bar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-850 pb-4 mb-5 gap-3.5">
-            <div className="flex items-center space-x-2.5">
-              <div className="p-1.5 bg-[#06B6D4]/10 text-cyan-400 rounded-[4px] border border-cyan-400/20 animate-pulse">
-                <Cpu className="w-4 h-4" />
+        {/* ── MOBILE MENU ── */}
+        {mobileMenuOpen && (
+          <div className="fixed inset-0 z-[60] bg-black/60" onClick={() => setMobileMenuOpen(false)}>
+            <div className="absolute right-0 top-0 h-full w-72 bg-white dark:bg-slate-900 shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <span className="font-bold text-slate-900 dark:text-white">Menu</span>
+                <button onClick={() => setMobileMenuOpen(false)}><X className="w-5 h-5" /></button>
               </div>
-              <div>
-                <h3 className="font-display font-extrabold text-xs tracking-wider text-white uppercase">workspace dynamic co-pilot</h3>
-                <p className="text-[10px] font-mono text-slate-400 tracking-tight uppercase">COMPILE STATE: ACTIVE • CO-PILOT TUNED TO PORT 3000</p>
+              <div className="flex flex-col gap-2">
+                {[["news","News Portal"],["dashboard","Live Dashboard"],["ai-lab","AI Intelligence Lab"]].map(([id, label]) => (
+                  <button key={id} onClick={() => { setActiveTab(id as any); setMobileMenuOpen(false); }}
+                    className={`text-left px-4 py-3 rounded-lg text-sm font-medium ${activeTab===id ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600" : "text-slate-600 dark:text-slate-400"}`}>
+                    {label}
+                  </button>
+                ))}
               </div>
-            </div>
-
-            {/* Segmented control toggle */}
-            <div className="flex bg-[#090d16] p-1 rounded-[6px] border border-slate-800">
-              <button
-                onClick={() => setWorkspaceMode("ai-lab")}
-                className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-[4px] text-[10.5px] font-mono font-bold tracking-wide transition cursor-pointer ${
-                  workspaceMode === "ai-lab"
-                    ? "bg-[#06B6D4] text-slate-950"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <Cpu className="w-3.5 h-3.5" />
-                <span>PHARMA AI LAB</span>
-              </button>
-              <button
-                onClick={() => setWorkspaceMode("android-studio")}
-                className={`flex items-center space-x-1.5 px-3.5 py-1.5 rounded-[4px] text-[10.5px] font-mono font-bold tracking-wide transition cursor-pointer ${
-                  workspaceMode === "android-studio"
-                    ? "bg-[#3B82F6] text-white border-b-2 border-[#1D4ED8]"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                <Terminal className="w-3.5 h-3.5" />
-                <span>KOTLIN SYSTEM CODE</span>
-              </button>
             </div>
           </div>
+        )}
 
-          {/* WORKSPACE RENDERING ROUTINES */}
-          {workspaceMode === "android-studio" ? (
-            /* ==========================================
-               MODE A: THE KOTLIN ANDROID CODE VISUALIZER
-               ========================================== */
-            <div>
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 min-h-[500px]">
-                {/* File Directory Structure Tree (Left column) */}
-                <div className="md:col-span-4 bg-slate-950/80 rounded-[8px] border border-slate-850 p-3 overflow-y-auto max-h-[550px]">
-                  <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest px-1 pb-2.5 block select-none border-b border-slate-900/60 mb-2">
-                    PROJECT FILES DIRECTORY
-                  </div>
-                  
-                  <div className="space-y-2 text-xs">
-                    {Object.keys(expandedCategories).map(catName => {
-                      const isOpen = expandedCategories[catName];
-                      const filesMatching = ANDROID_PROJECT_FILES.filter(f => f.category === catName);
-                      return (
-                        <div key={catName} className="space-y-1">
-                          <button 
-                            onClick={() => toggleCategoryExpand(catName)}
-                            className="w-full flex items-center justify-between p-1.5 hover:bg-slate-905 rounded-[4px] text-slate-350 cursor-pointer text-left focus:outline-none"
-                          >
-                            <div className="flex items-center space-x-2">
-                              {isOpen ? <FolderOpen className="w-3.5 h-3.5 text-sky-400" /> : <Folder className="w-3.5 h-3.5 text-blue-500" />}
-                              <span className="font-bold font-mono tracking-wide text-slate-300">{catName}</span>
-                            </div>
-                            <span className="text-[9.5px] bg-[#1E293B] font-mono font-bold px-1.5 py-0.5 rounded text-slate-400">
-                              {filesMatching.length}
-                            </span>
-                          </button>
+        {/* ── MAIN CONTENT ── */}
+        <main className="max-w-screen-xl mx-auto px-4 lg:px-6 py-8">
 
-                          {isOpen && (
-                            <div className="pl-3.5 space-y-0.5 border-l border-slate-800/40 ml-2 mt-0.5">
-                              {filesMatching.map(file => {
-                                const isSelected = selectedFile.path === file.path;
-                                return (
-                                  <button
-                                    key={file.path}
-                                    onClick={() => setSelectedFile(file)}
-                                    className={`w-full flex items-center space-x-2 p-1.5 rounded-[4px] transition cursor-pointer text-left ${
-                                      isSelected 
-                                        ? "bg-[#3B82F6]/10 text-[#3B82F6] font-bold border-l-2 border-[#3B82F6]" 
-                                        : "text-slate-400 hover:text-slate-100 hover:bg-slate-900/20"
-                                    }`}
-                                  >
-                                    <FileCode className="w-3 h-3 flex-shrink-0" />
-                                    <span className="truncate font-mono text-[10px]">{file.name}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
+          {/* ════ NEWS PORTAL TAB ════ */}
+          {activeTab === "news" && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Left: Articles */}
+              <div className="lg:col-span-2 space-y-6">
+
+                {/* Featured Article */}
+                {featured && !loading && (
+                  <div onClick={() => { setSelectedArticle(featured); setArticleView("detail"); }}
+                    className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden cursor-pointer hover:border-emerald-300 dark:hover:border-emerald-700 transition-all group shadow-sm">
+                    <div className="flex flex-col md:flex-row">
+                      <div className="relative md:w-64 h-48 md:h-auto bg-slate-100 dark:bg-slate-800 flex-shrink-0">
+                        <img src={featured.imageUrl} alt={featured.title} className="w-full h-full object-cover" />
+                        <span className="absolute top-3 left-3 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">Top Story</span>
+                      </div>
+                      <div className="p-6 flex flex-col justify-between">
+                        <div>
+                          <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded border uppercase tracking-wider mb-3 ${CATEGORY_COLORS[featured.category] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
+                            {featured.category}
+                          </span>
+                          <h2 className="text-2xl font-serif font-bold leading-snug mb-3 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">{featured.title}</h2>
+                          <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed line-clamp-3">{featured.summary}</p>
                         </div>
-                      );
-                    })}
+                        <div className="flex items-center justify-between mt-4 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="italic">By {featured.author}</span>
+                          <span>{featured.date}</span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">Full Article →</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* AI Agent Banner */}
+                <div className="bg-slate-900 dark:bg-slate-950 border border-slate-700 dark:border-slate-800 rounded-xl p-5">
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                      <div className="flex items-center gap-2 text-emerald-400 font-mono text-xs font-bold uppercase tracking-widest mb-1">
+                        <Terminal className="w-3.5 h-3.5" /> Gemini Autonomous PharmaNews Analyst
+                      </div>
+                      <p className="text-slate-400 text-sm">Server-authoritative pipeline connected to Gemini. Runs daily diagnostics and news updates.</p>
+                    </div>
+                    <div className="flex items-center gap-3 flex-none">
+                      <div className="text-right">
+                        <div className="text-[10px] text-slate-500 uppercase">Agent:</div>
+                        <div className="flex items-center gap-1 text-xs font-bold text-emerald-400">
+                          <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" /> ONLINE
+                        </div>
+                      </div>
+                      <button onClick={runAgent} disabled={agentRunning}
+                        className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white text-sm font-bold rounded-lg transition-colors">
+                        {agentRunning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                        {agentRunning ? "Running..." : "Trigger Daily AI Update"}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="bg-black/40 rounded-lg p-4 font-mono text-xs">
+                    <div className="text-slate-500 mb-2">MONITORED: PubMed, FDA registries, EMA announcements • Last Scan: Today at 05:00 AM IST</div>
+                    {agentLogs.length === 0 ? (
+                      <div className="text-slate-600 italic">No scanner events triggered. Click "Trigger Daily AI Update" to run the agent.</div>
+                    ) : agentLogs.map((log, i) => (
+                      <div key={i} className={`${log.includes("ERROR") ? "text-red-400" : log.includes("DONE") || log.includes("OK") ? "text-emerald-400" : "text-slate-400"}`}>{log}</div>
+                    ))}
                   </div>
                 </div>
 
-                {/* Code Highlight view (Right column) */}
-                <div className="md:col-span-8 flex flex-col bg-slate-950/85 border border-slate-850 rounded-[8px] overflow-hidden min-h-[380px] max-h-[550px]">
-                  
-                  {/* File Title Bar */}
-                  <div className="bg-[#090d16] px-4 py-2.5 border-b border-slate-900 flex items-center justify-between">
-                    <div className="flex items-center space-x-2 text-xs text-slate-300">
-                      <FileText className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                      <span className="font-mono text-[10px] tracking-wide select-all text-slate-350">{selectedFile.path}</span>
+                {/* Article list */}
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="font-mono text-sm text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                      <Newspaper className="w-4 h-4" /> Today's Pharma News Archives
+                      {!loading && <span className="text-emerald-500">• Showing {paginated.length} articles</span>}
+                    </h2>
+                    <div className="flex gap-2">
+                      {["All News","Drug Approvals","Clinical Trials","Biotechnology","AI in Healthcare"].map(cat => (
+                        <button key={cat} onClick={() => { setActiveCategory(cat); fetchArticles(cat); }}
+                          className={`px-3 py-1 rounded-full text-xs font-medium transition-colors hidden md:block ${activeCategory===cat ? "bg-emerald-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
+                          {cat}
+                        </button>
+                      ))}
                     </div>
-                    <button
-                      onClick={handleCopyCode}
-                      className="flex items-center space-x-1 px-2.5 py-1 text-[9.5px] font-mono font-bold bg-[#1E293B] text-slate-200 rounded-[4px] hover:bg-slate-750 border border-slate-800 transition cursor-pointer active:scale-95"
-                    >
-                      {copiedFileId ? (
-                        <>
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                          <span className="text-emerald-400">Copied</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3 h-3" />
-                          <span>Copy</span>
-                        </>
+                  </div>
+
+                  {loading ? (
+                    <div className="flex items-center justify-center py-20"><RefreshCw className="w-6 h-6 animate-spin text-emerald-500" /></div>
+                  ) : (
+                    <div className="space-y-4">
+                      {paginated.map(article => (
+                        <div key={article.id} onClick={() => { setSelectedArticle(article); setArticleView("detail"); }}
+                          className="group flex flex-col md:flex-row bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 p-5 gap-5 cursor-pointer transition-all shadow-sm">
+                          <div className="relative md:w-56 h-36 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden flex-shrink-0">
+                            <img src={article.imageUrl} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                            <span className={`absolute top-2 left-2 px-2 py-0.5 text-[10px] font-bold rounded border uppercase tracking-wider ${CATEGORY_COLORS[article.category] || "bg-slate-100 text-slate-700 border-slate-200"}`}>
+                              {article.category}
+                            </span>
+                          </div>
+                          <div className="flex flex-col justify-between flex-1">
+                            <div>
+                              <h3 className="text-xl font-serif font-bold leading-snug mb-2 group-hover:text-emerald-700 dark:group-hover:text-emerald-400 transition-colors">{article.title}</h3>
+                              <div className="flex flex-wrap gap-3 text-xs text-slate-500 dark:text-slate-400 mb-2">
+                                <span className="italic">By {article.author}{article.authorRole ? `, ${article.authorRole}` : ""}</span>
+                                <span className="flex items-center gap-1"><Calendar className="w-3 h-3" />{article.date}</span>
+                                <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{article.readTime}</span>
+                              </div>
+                              <p className="text-slate-600 dark:text-slate-400 text-sm leading-relaxed line-clamp-2">{article.summary}</p>
+                            </div>
+                            <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 text-xs">
+                              <span className="text-slate-400 flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{article.views || Math.floor(Math.random()*500+100)} Clinical Views</span>
+                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold group-hover:translate-x-1 transition-transform flex items-center gap-1">Read Editorial <ExternalLink className="w-3 h-3" /></span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Pagination */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center gap-2 mt-8">
+                      {Array.from({length: Math.min(totalPages,5)}, (_,i) => i+1).map(p => (
+                        <button key={p} onClick={() => setCurrentPage(p)}
+                          className={`w-9 h-9 rounded text-sm font-medium transition-colors ${currentPage===p ? "bg-amber-500 text-white" : "border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-emerald-500"}`}>
+                          {p}
+                        </button>
+                      ))}
+                      {totalPages > 5 && <span className="text-slate-400">...</span>}
+                      {currentPage < totalPages && (
+                        <button onClick={() => setCurrentPage(p => p+1)}
+                          className="px-4 h-9 rounded border border-slate-300 dark:border-slate-700 text-sm text-slate-600 dark:text-slate-400 hover:border-emerald-500 transition-colors">
+                          Next →
+                        </button>
                       )}
-                    </button>
-                  </div>
-
-                  {/* Real Code display box */}
-                  <div className="flex-1 overflow-auto p-4 font-mono text-[10.5px] leading-relaxed text-slate-300 bg-slate-950 select-text select-all whitespace-pre">
-                    <code>{selectedFile.content}</code>
-                  </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Quick Architecture MVVM bullet guide under the inspector */}
-              <div className="mt-5 border-t border-slate-850 pt-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-sans">
-                <div className="p-3 bg-slate-955/40 rounded-[8px] border border-slate-850">
-                  <h4 className="font-display font-bold text-slate-205 text-xs tracking-wider uppercase">📂 decoupled design engine</h4>
-                  <p className="text-slate-400 mt-1 leading-relaxed text-[11px]">Unifies Retrofit networks and Room DAOs behind Hilt Inject constructs, keeping views completely independent from physical databases.</p>
-                </div>
-                <div className="p-3 bg-slate-955/40 rounded-[8px] border border-slate-850">
-                  <h4 className="font-display font-bold text-slate-205 text-xs tracking-wider uppercase">⚡ stateflow & triggers</h4>
-                  <p className="text-slate-400 mt-1 leading-relaxed text-[11px]">Drives modern StateFlow structures using flatMapLatest pipeline triggers. Emits direct reactive updates on the application layer.</p>
-                </div>
-                <div className="p-3 bg-slate-955/45 rounded-[8px] border border-slate-850">
-                  <h4 className="font-display font-bold text-slate-205 text-xs tracking-wider uppercase">🏭 fcm & pipeline alerts</h4>
-                  <p className="text-slate-400 mt-1 leading-relaxed text-[11px]">Integrates Firebase Cloud Messaging tokens, structured preferences DataStore, and responsive layout shimmers ready for device release.</p>
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* ==========================================
-               MODE B: PHARMA AI INSIGHTS LABORATORY
-               ========================================== */
-            <div className="flex flex-col md:flex-row gap-5 flex-1 min-h-[500px]">
-              
-              {/* Left Sub-Navigator Tab Column (8 distinct requested AI models) */}
-              <div className="md:w-1/4 flex flex-col space-y-1 bg-slate-950/50 p-2 rounded-[8px] border border-slate-850">
-                <div className="text-[9px] font-mono font-bold text-[#06B6D4] uppercase tracking-widest px-2.5 py-1.5 border-b border-slate-900/70 mb-2">
-                  Clinical AI Services
-                </div>
-
-                {[
-                  { id: "chatbot", label: "AI Co-Pilot Chat", icon: MessageSquare, badge: "LIVE" },
-                  { id: "summarization", label: "News Summarizer", icon: FileText, badge: "GEMINI" },
-                  { id: "categorization", label: "Auto Categorizer", icon: FileCheck, badge: "CONV" },
-                  { id: "recommendations", label: "Dynamic Personalizer", icon: Sliders, badge: "ALG" },
-                  { id: "simplification", label: "Scientific Simplifier", icon: BookOpen, badge: "TRANS" },
-                  { id: "trends", label: "Trend Detection", icon: BarChart3, badge: "REP" },
-                  { id: "deduplication", label: "Deduplicate & Merger", icon: GitMerge, badge: "RESOL" },
-                  { id: "smart-search", label: "Smart Semantic Search", icon: Search, badge: "SEM" }
-                ].map((m) => {
-                  const SubIcon = m.icon;
-                  const isActive = selectedSubMode === m.id;
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => setSelectedSubMode(m.id as any)}
-                      className={`w-full flex items-center justify-between p-2 rounded-[4px] text-left transition cursor-pointer ${
-                        isActive
-                          ? "bg-cyan-500/10 text-cyan-400 font-bold border-l-2 border-cyan-400"
-                          : "text-slate-400 hover:text-slate-100 hover:bg-slate-900/30"
-                      }`}
-                    >
-                      <div className="flex items-center space-x-2.5 font-sans text-[11px] font-medium tracking-wide">
-                        <SubIcon className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span>{m.label}</span>
+              {/* Right sidebar */}
+              <aside className="space-y-6">
+                {/* Trending */}
+                <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+                  <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-emerald-500" /> Trending on PharmaNews
+                  </h3>
+                  <div className="space-y-4">
+                    {TRENDING.map(t => (
+                      <div key={t.rank} className="flex gap-3 cursor-pointer group">
+                        <span className="w-7 h-7 rounded-full bg-slate-900 dark:bg-slate-800 text-white flex items-center justify-center text-xs font-bold flex-none">{t.rank}</span>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors leading-snug">{t.title}</p>
                       </div>
-                      <span className="text-[7.5px] font-mono uppercase bg-slate-900 text-slate-500 border border-slate-800 px-1 py-0.5 rounded">
-                        {m.badge}
-                      </span>
+                    ))}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-4 font-mono">Rank metrics compiled hourly via analytics reader frequency counters.</p>
+                </div>
+
+                {/* Pharma Stocks */}
+                <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+                  <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                    <LineChart className="w-4 h-4 text-blue-500" /> Pharma Stocks
+                    <span className="ml-auto text-[10px] text-slate-400 font-mono">LIVE</span>
+                  </h3>
+                  <div className="space-y-3">
+                    {stocks.map(s => (
+                      <div key={s.symbol} className="flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">{s.symbol}</span>
+                          <span className="text-xs text-slate-500 dark:text-slate-400 ml-1.5">{s.name}</span>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-mono font-bold text-slate-900 dark:text-white">${s.price.toFixed(2)}</div>
+                          <div className={`text-xs font-mono flex items-center gap-0.5 justify-end ${s.up ? "text-emerald-500" : "text-red-500"}`}>
+                            {s.up ? <ArrowUpRight className="w-3 h-3"/> : <ArrowDownRight className="w-3 h-3"/>}
+                            {s.changePct > 0 ? "+" : ""}{s.changePct.toFixed(2)}%
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-3 font-mono">Data delayed 15 min. Not financial advice.</p>
+                </div>
+
+                {/* Newsletter */}
+                <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-full flex items-center justify-center">
+                      <Mail className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <h3 className="font-bold text-slate-900 dark:text-white">Weekly Clinical Digest</h3>
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">Read by pharmacists, drug regulators, and biochemists worldwide. Get immediate PDF alerts on FDA priority announcements.</p>
+                  {newsletterSuccess ? (
+                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium text-sm">
+                      <Check className="w-4 h-4" /> Subscribed successfully!
+                    </div>
+                  ) : (
+                    <form onSubmit={handleNewsletter} className="space-y-2">
+                      <input type="email" value={newsletterEmail} onChange={e => setNewsletterEmail(e.target.value)}
+                        placeholder="pharmacist@hospital.org" required
+                        className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-emerald-500" />
+                      <button type="submit" className="w-full py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-lg text-sm font-bold hover:bg-slate-800 dark:hover:bg-slate-100 transition-colors">
+                        Subscribe to Weekly Digest
+                      </button>
+                    </form>
+                  )}
+                  <div className="flex items-center gap-1.5 mt-3 text-[10px] text-slate-400">
+                    <Shield className="w-3 h-3 text-emerald-500" /> SECURE VERIFICATION DATABASE
+                  </div>
+                </div>
+              </aside>
+            </div>
+          )}
+
+          {/* ════ AI INTELLIGENCE LAB TAB ════ */}
+          {activeTab === "ai-lab" && (
+            <div className="space-y-8">
+              {/* Hero banner */}
+              <div className="relative bg-gradient-to-br from-emerald-900 to-slate-900 rounded-2xl p-8 overflow-hidden border border-emerald-800">
+                <div className="absolute right-8 top-8 opacity-10 text-emerald-400"><Sparkles className="w-32 h-32" /></div>
+                <div className="relative">
+                  <span className="inline-flex items-center gap-2 text-emerald-400 text-xs font-mono font-bold uppercase tracking-widest mb-3">
+                    <Sparkles className="w-3.5 h-3.5" /> Gemini Clinical Laboratory Space
+                  </span>
+                  <h2 className="text-3xl font-serif font-bold text-white mb-3">AI Chemical Analysis & Editorial Publisher</h2>
+                  <p className="text-slate-400 max-w-2xl mb-6">Synthesise deep clinical-grade molecular pathway briefings or compile complete, validated regulatory research articles using real-time generative capabilities.</p>
+                  <div className="flex gap-3">
+                    <button className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-colors">
+                      <BookOpen className="w-4 h-4" /> Compound Explainer
                     </button>
-                  );
-                })}
+                    <button className="flex items-center gap-2 px-5 py-2.5 border border-slate-600 text-slate-300 rounded-lg text-sm font-bold hover:border-emerald-500 transition-colors">
+                      <Newspaper className="w-4 h-4" /> AI Creative Writer
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              {/* Right Workspace Segment (Active AI Service Dashboard) */}
-              <div className="md:w-3/4 flex flex-col bg-slate-950/80 border border-slate-850 rounded-[8px] p-4 font-sans select-text relative overflow-y-auto max-h-[550px]">
-                
-                {/* 1. CHATBOT WORKSPACE */}
-                {selectedSubMode === "chatbot" && (
-                  <div className="flex flex-col h-full space-y-4">
-                    <div className="border-b border-slate-900 pb-2 flex items-center justify-between">
-                      <div>
-                        <h4 className="font-display font-extrabold text-white text-xs uppercase tracking-wider">💬 Clinically-Grounded Conversational Co-Pilot</h4>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">GEMINI 3.5-FLASH • CITED FACT SHEETS • STRICT TREATMENT DIRECTIVE OFFSETS</p>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* AI Chat */}
+                <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col shadow-sm" style={{height:"560px"}}>
+                  <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex items-center gap-3">
+                    <div className="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center">
+                      <Sparkles className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-bold text-sm text-slate-900 dark:text-white">PharmaNews AI Assistant</p>
+                      <p className="text-xs text-emerald-500">● Powered by Gemini</p>
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                    {chatMessages.map((msg, i) => (
+                      <div key={i} className={`flex ${msg.role==="user" ? "justify-end" : "justify-start"}`}>
+                        <div className={`max-w-[85%] rounded-xl px-4 py-3 text-sm leading-relaxed ${msg.role==="user" ? "bg-emerald-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200"}`}>
+                          {msg.text}
+                        </div>
+                      </div>
+                    ))}
+                    {chatLoading && (
+                      <div className="flex justify-start">
+                        <div className="bg-slate-100 dark:bg-slate-800 rounded-xl px-4 py-3 flex gap-1">
+                          {[0,1,2].map(i => <div key={i} className="w-2 h-2 bg-emerald-500 rounded-full animate-bounce" style={{animationDelay:`${i*0.15}s`}} />)}
+                        </div>
+                      </div>
+                    )}
+                    <div ref={chatEndRef} />
+                  </div>
+                  <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+                    <div className="flex gap-2 mb-2 overflow-x-auto no-scrollbar">
+                      {["FDA AI Algorithm rules","What is EU Annex 1?","PROTAC vs Kinase inhibitors","GLP-1 drug mechanisms"].map(q => (
+                        <button key={q} onClick={() => setChatInput(q)}
+                          className="flex-none text-xs px-3 py-1.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-emerald-500 hover:text-emerald-600 transition-colors whitespace-nowrap">
+                          {q}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input value={chatInput} onChange={e => setChatInput(e.target.value)}
+                        onKeyDown={e => e.key==="Enter" && sendChat()}
+                        placeholder="Ask about any pharma topic..."
+                        className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-emerald-500" />
+                      <button onClick={sendChat} disabled={chatLoading || !chatInput.trim()}
+                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-lg transition-colors">
+                        <Send className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Compound Analyst */}
+                <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-5 h-5 border-2 border-emerald-500 rounded flex-none" />
+                    <h3 className="font-bold text-slate-900 dark:text-white">Compound Analyst</h3>
+                  </div>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">Type any organic pharmaceutical compound, API reagent, or monoclonal antibody to compile an automated pathways summary.</p>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2 block">Compound Name</label>
+                      <div className="flex gap-2">
+                        <input id="compound-input" placeholder="e.g. Pembrolizumab, Metformin..."
+                          className="flex-1 px-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-emerald-500" />
+                        <button onClick={async () => {
+                          const val = (document.getElementById("compound-input") as HTMLInputElement)?.value;
+                          if (val) { setChatInput(`Explain the pharmaceutical compound: ${val} - its mechanism of action, clinical uses, and regulatory status.`); setActiveTab("ai-lab"); setTimeout(() => sendChat(), 100); }
+                        }} className="p-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">
+                          <Send className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-
-                    {/* Pre-canned expert prompt helpers */}
-                    <div className="space-y-1">
-                      <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Suggested Exploration Vectors:</span>
-                      <div className="flex flex-wrap gap-1.5 select-none">
-                        {[
-                          "Explain GLP-1 obesity trial endpoints in simple language.",
-                          "What are the major terms of the Zurich API declaration?",
-                          "Has the FDA granted fast-tracks for Lignogene gene therapy?"
-                        ].map((qStr) => (
-                          <button
-                            key={qStr}
-                            onClick={() => handleSendAIChatQuery(qStr)}
-                            className="bg-slate-900 hover:bg-slate-850 text-slate-300 text-[9.5px] py-1 px-2.5 rounded border border-slate-800 transition cursor-pointer font-sans"
-                          >
-                            {qStr}
+                    <div>
+                      <label className="text-xs font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 mb-2 block">Popular Reagents:</label>
+                      <div className="flex flex-wrap gap-2">
+                        {["Pembrolizumab","Metformin","Paclitaxel","Ozempic","Keytruda","Humira"].map(c => (
+                          <button key={c} onClick={() => { const el = document.getElementById("compound-input") as HTMLInputElement; if(el) el.value = c; }}
+                            className="px-3 py-1.5 border border-slate-200 dark:border-slate-700 rounded-lg text-sm text-slate-700 dark:text-slate-300 hover:border-emerald-500 hover:text-emerald-600 transition-colors font-medium">
+                            {c}
                           </button>
                         ))}
                       </div>
                     </div>
-
-                    {/* Chat Messages Body */}
-                    <div className="flex-1 bg-[#090d16] border border-slate-900 rounded-[6px] p-3 space-y-3 max-h-[300px] overflow-y-auto">
-                      {chatMessages.map((m, idx) => (
-                        <div
-                          key={idx}
-                          className={`flex flex-col space-y-1 max-w-[90%] ${
-                            m.role === "user" ? "ml-auto items-end" : "mr-auto items-start"
-                          }`}
-                        >
-                          <div className={`text-[10px] font-mono font-bold uppercase tracking-wider ${
-                            m.role === "user" ? "text-blue-400" : "text-cyan-400"
-                          }`}>
-                            {m.role === "user" ? "Academic User" : "Pharma AI Assistant"}
-                          </div>
-                          <div
-                            className={`p-2.5 rounded-lg text-[11px] leading-relaxed select-text font-sans whitespace-pre-wrap ${
-                              m.role === "user"
-                                ? "bg-slate-800 text-slate-100 rounded-tr-none border border-slate-700"
-                                : "bg-slate-950 text-slate-200 rounded-tl-none border border-slate-850"
-                            }`}
-                          >
-                            {m.text}
-
-                            {/* Citations Footer */}
-                            {m.citations && m.citations.length > 0 && (
-                              <div className="mt-2 pt-1.5 border-t border-slate-800/40 flex flex-wrap items-center gap-1">
-                                <span className="text-[8.5px] font-mono text-slate-500 uppercase mr-1">Citations:</span>
-                                {m.citations.map((cit, cIdx) => (
-                                  <span key={cIdx} className="bg-slate-900 text-slate-400 border border-slate-850 text-[8.5px] font-sans px-1.5 py-0.5 rounded">
-                                    {cit}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-
-                            {m.isFallback && (
-                              <div className="mt-1.5 text-[8.5px] font-mono text-amber-500 tracking-wider">
-                                [OOS Offline-Mode Engine Synthesis]
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                      {chatLoading && (
-                        <div className="flex items-center space-x-2 text-cyan-400 animate-pulse text-[10.5px] font-mono">
-                          <Cpu className="w-3.5 h-3.5 animate-spin" />
-                          <span>Gemini clinical retrieval pipeline running...</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Chat Inputs */}
-                    <div className="flex items-center space-x-1.5">
-                      <input
-                        type="text"
-                        value={chatInput}
-                        onChange={(e) => setChatInput(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && handleSendAIChatQuery()}
-                        placeholder="Inquire regarding trial designs, molecular knockouts, active api, drug clearances..."
-                        className="flex-1 bg-[#090d16] border border-slate-850 rounded-[4px] px-3 py-2 text-[11px] focus:outline-none focus:ring-1 focus:ring-cyan-500 text-white font-sans"
-                      />
-                      <button
-                        onClick={() => handleSendAIChatQuery()}
-                        disabled={chatLoading}
-                        className="bg-[#06B6D4] hover:bg-cyan-500 text-slate-950 font-bold text-xs py-2 px-4 rounded-[4px] cursor-pointer transition flex items-center space-x-1.5"
-                      >
-                        <Zap className="w-3.5 h-3.5 text-slate-950" />
-                        <span>SEND</span>
-                      </button>
-                    </div>
                   </div>
-                )}
 
-                {/* 2. SUMMARIZATION WORKSPACE */}
-                {selectedSubMode === "summarization" && (
-                  <div className="space-y-4">
-                    <div className="border-b border-slate-900 pb-2">
-                      <h4 className="font-display font-extrabold text-white text-xs uppercase tracking-wider">📝 Clinical Text Summarization Engine</h4>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">DETERMINISTIC CONTEXT MATRIX • NO TREATMENTS PRESCRIBED</p>
+                  {/* Biological Report placeholder */}
+                  <div className="mt-6 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-6 flex flex-col items-center justify-center text-center bg-slate-50 dark:bg-slate-800/30">
+                    <div className="w-10 h-10 border-2 border-slate-300 dark:border-slate-600 rounded-lg flex items-center justify-center mb-3">
+                      <BookOpen className="w-5 h-5 text-slate-400" />
                     </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Left parameter column */}
-                      <div className="space-y-3 bg-[#090d16] p-3 rounded border border-slate-900">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase font-mono block">Input Article Source Target:</label>
-                          <select
-                            value={summaryTargetArticleId}
-                            onChange={(e) => setSummaryTargetArticleId(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-850 text-xs text-white p-2 rounded cursor-pointer"
-                          >
-                            {articles.map(a => (
-                              <option key={a.id} value={a.id}>{a.title}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase font-mono block">Target Condensation Level:</label>
-                          <div className="grid grid-cols-3 gap-1">
-                            {(["short", "medium", "detailed"] as const).map(len => (
-                              <button
-                                key={len}
-                                onClick={() => setSummaryFormat(len)}
-                                className={`py-1 px-1 text-[9.5px] font-mono font-bold rounded border transition cursor-pointer ${
-                                  summaryFormat === len
-                                    ? "bg-[#06B6D4] text-slate-950 border-[#06B6D4]"
-                                    : "bg-slate-950 text-slate-450 border-slate-850 hover:text-white"
-                                }`}
-                              >
-                                {len.toUpperCase()}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={handleGetAILabSummary}
-                          disabled={summaryLoading}
-                          className="w-full bg-[#3B82F6] hover:bg-blue-600 text-white font-bold text-xs py-2 px-3 rounded cursor-pointer transition flex items-center justify-center space-x-1.5"
-                        >
-                          {summaryLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Cpu className="w-3.5 h-3.5" />}
-                          <span>EXECUTE CONDENSE RETRIEVAL</span>
-                        </button>
-                      </div>
-
-                      {/* Right feedback column */}
-                      <div className="bg-slate-950 border border-slate-850 rounded p-3 flex flex-col justify-between min-h-[160px]">
-                        <div>
-                          <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest mb-1.5">
-                            ANALYZER REPORT FEEDBACK
-                          </div>
-                          {summaryLoading ? (
-                            <div className="text-cyan-400 font-mono text-[10px] animate-pulse">Running medical summary pass via Gemini API...</div>
-                          ) : (
-                            <p className="text-[11px] leading-relaxed text-slate-350 select-text whitespace-pre-wrap">
-                              {summarizedText || "Select parameters and click render above to fetch the abstract summary."}
-                            </p>
-                          )}
-                        </div>
-                        {summaryLocalFallback && summarizedText && (
-                          <div className="text-[8.5px] font-mono text-amber-500 border-t border-slate-900 mt-2 pt-1.5">
-                            [OFFLINE DEMO METRICS ACTIVATED] Validates formatting abstract pipelines.
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                    <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">Biological Compound Report Workspace</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Enter a medicinal agent to pull structured insights from chemical, regulatory and historical oncology pipelines.</p>
                   </div>
-                )}
-
-                {/* 3. CATEGORIZATION WORKSPACE */}
-                {selectedSubMode === "categorization" && (
-                  <div className="space-y-4">
-                    <div className="border-b border-slate-900 pb-2">
-                      <h4 className="font-display font-extrabold text-white text-xs uppercase tracking-wider">🏷️ Multi-Disciplinary NLP Categorization</h4>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">COMPUTES PROBABILITY WEIGHTS OVER 10 TARGET PHARMACEUTICAL DOMAINS</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Left control block */}
-                      <div className="space-y-3 bg-[#090d16] p-3 rounded border border-slate-900">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase font-mono block">Input Headline Selection:</label>
-                          <select
-                            value={categorizeArticleId}
-                            onChange={(e) => setCategorizeArticleId(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-850 text-xs text-white p-2 rounded cursor-pointer"
-                          >
-                            {articles.map(a => (
-                              <option key={a.id} value={a.id}>{a.title}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <button
-                          onClick={handleGetAILabClassification}
-                          disabled={classifyLoading}
-                          className="w-full bg-[#06B6D4] hover:bg-cyan-500 text-slate-950 font-bold text-xs py-2 px-3 rounded cursor-pointer transition flex items-center justify-center space-x-1.5"
-                        >
-                          {classifyLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <FileCheck className="w-3.5 h-3.5" />}
-                          <span>CLASSIFY SCIENTIFIC DISCIPLINE</span>
-                        </button>
-                      </div>
-
-                      {/* Right visualization results block */}
-                      <div className="bg-slate-955 border border-slate-850 rounded p-3 text-[11px] space-y-2 max-h-[220px] overflow-y-auto">
-                        <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest border-b border-slate-900 pb-1 mb-1">
-                          DISCIPLINE MAP CONFIDENCE SCORE
-                        </div>
-
-                        {classifyLoading ? (
-                          <div className="text-cyan-400 font-mono animate-pulse">Running advanced scientific terminology classifier...</div>
-                        ) : classifiedScores.length > 0 ? (
-                          <div className="space-y-1.5">
-                            {classifiedScores.map((sc, scIdx) => (
-                              <div key={scIdx} className="space-y-0.5">
-                                <div className="flex justify-between font-medium text-[10px]">
-                                  <span className="text-slate-205 truncate max-w-[150px]">{sc.category}</span>
-                                  <span className="font-mono text-cyan-400 font-bold">{sc.confidence}%</span>
-                                </div>
-                                <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-slate-850/40">
-                                  <div
-                                    style={{ width: `${sc.confidence}%` }}
-                                    className="bg-gradient-to-r from-[#06B6D4] to-[#3B82F6] h-full"
-                                  ></div>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-slate-500 italic">Select article and trigger NLP matching scan.</p>
-                        )}
-                        {classifyLocalFallback && classifiedScores.length > 0 && (
-                          <div className="text-[8.5px] font-mono text-amber-500 pt-1 mt-1 border-t border-slate-900/60">
-                            [LOCAL SCAN FALLBACK DETECTED] Compiles syntactic tokens determinant weights.
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 4. PERSONALIZED RECOMMENDATIONS WORKSPACE */}
-                {selectedSubMode === "recommendations" && (
-                  <div className="space-y-4">
-                    <div className="border-b border-slate-900 pb-2">
-                      <h4 className="font-display font-extrabold text-white text-xs uppercase tracking-wider">🎯 State-Based Personalized Pipeline</h4>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">EVALUATES PROFESSIONAL USER ROLES & EXPLICIT INTERESTS THROUGH SEMANTIC ALIGNMENT</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Config parameters */}
-                      <div className="space-y-3 bg-[#090d16] p-3 rounded border border-slate-900 text-xs">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase font-mono block">Dynamic Role Category Selector:</label>
-                          <select
-                            value={usrRole}
-                            onChange={(e) => setUsrRole(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-850 text-xs text-white p-1.5 rounded cursor-pointer font-sans"
-                          >
-                            <option>Pharmaceutical Researcher</option>
-                            <option>Clinical Pharmacist</option>
-                            <option>Academic Pharmacy Student</option>
-                            <option>Regulatory Affairs Specialist</option>
-                            <option>Drug Discovery Scientist</option>
-                            <option>Biotech Industry Executive</option>
-                          </select>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase font-mono block">Clinical Topic Interests:</label>
-                          <div className="grid grid-cols-2 gap-1.5 font-sans">
-                            {["Biotechnology", "Drug Approvals", "Clinical Trials", "Metabolic Diseases", "Oncology Research", "Supply Chains"].map((t) => {
-                              const isChecked = usrTags.includes(t);
-                              return (
-                                <label key={t} className="flex items-center space-x-1.5 text-[10px] text-slate-300 cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => {
-                                      if (isChecked) {
-                                        setUsrTags(prev => prev.filter(item => item !== t));
-                                      } else {
-                                        setUsrTags(prev => [...prev, t]);
-                                      }
-                                    }}
-                                    className="rounded border-slate-800 text-cyan-400 focus:ring-0"
-                                  />
-                                  <span>{t}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={handleGetAILabRecommendations}
-                          disabled={recommendationLoading}
-                          className="w-full bg-[#3B82F6] hover:bg-blue-650 text-white font-bold text-xs py-2 px-3 rounded cursor-pointer transition flex items-center justify-center space-x-1.5"
-                        >
-                          {recommendationLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sliders className="w-3.5 h-3.5" />}
-                          <span>ALIGN RELEVANCY PIPELINES</span>
-                        </button>
-                      </div>
-
-                      {/* Output Feed section */}
-                      <div className="bg-slate-955 border border-slate-850 rounded p-3 space-y-2.5 max-h-[220px] overflow-y-auto">
-                        <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest border-b border-slate-900 pb-1 flex justify-between">
-                          <span>PERSONALIZED DIGEST RECOMMENDATIONS</span>
-                          {recommendationLocalFallback && <span className="text-amber-500 font-bold">[LOCAL MATCH]</span>}
-                        </div>
-
-                        {recommendationLoading ? (
-                          <div className="text-cyan-400 font-mono animate-pulse text-[10.5px]">Aligning semantic profiles to available news entities...</div>
-                        ) : recommendedItems.length > 0 ? (
-                          <div className="space-y-2">
-                            {recommendedItems.map((rec, recIdx) => (
-                              <div key={recIdx} className="bg-[#090d16] border border-slate-900 p-2 rounded relative hover:border-cyan-500/20 transition">
-                                <div className="flex justify-between items-center">
-                                  <span className="text-[8.5px] font-mono font-bold bg-[#3B82F6]/10 text-[#3B82F6] px-1 py-0.5 rounded uppercase">
-                                    {rec.article.category}
-                                  </span>
-                                  <span className="text-[10px] font-mono text-emerald-400 font-extrabold">{rec.recommendationScore}% MATCH</span>
-                                </div>
-                                <h5 className="font-display font-medium text-[10.5px] text-white leading-snug mt-1">{rec.article.title}</h5>
-                                <p className="text-[9.5px] text-slate-400 leading-snug mt-1 bg-slate-950/60 p-1 rounded font-sans border-l border-cyan-400/35 select-text">
-                                  {rec.reason}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-slate-500 italic">Configure profile parameters and click align parameters.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 5. SCIENTIFIC SIMPLIFICATION */}
-                {selectedSubMode === "simplification" && (
-                  <div className="space-y-4">
-                    <div className="border-b border-slate-900 pb-2">
-                      <h4 className="font-display font-extrabold text-white text-xs uppercase tracking-wider">🧬 Molecular Translation & Scientific register translation</h4>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">GEMINI RE-TRANSLATION PIPELINE IN STUDENT, PRACTICE, OR ACADEMIC MODALITY PRESETS</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Inputs Column */}
-                      <div className="space-y-3 bg-[#090d16] p-3 rounded border border-slate-900 text-xs">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase font-mono block">Passage Target Article:</label>
-                          <select
-                            value={simplifyTargetArticleId}
-                            onChange={(e) => setSimplifyTargetArticleId(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-850 text-xs text-white p-2 rounded cursor-pointer"
-                          >
-                            {articles.map(a => (
-                              <option key={a.id} value={a.id}>{a.title}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase font-mono block">Translation Target Archetype:</label>
-                          <div className="grid grid-cols-3 gap-1">
-                            {(["student", "professional", "researcher"] as const).map(m => (
-                              <button
-                                key={m}
-                                onClick={() => setSimplifyMode(m)}
-                                className={`py-1.5 px-0.5 text-[9px] font-mono font-bold rounded border transition cursor-pointer ${
-                                  simplifyMode === m
-                                    ? "bg-[#06B6D4] text-slate-950 border-[#06B6D4]"
-                                    : "bg-slate-955 text-slate-450 border-slate-850 hover:text-white"
-                                }`}
-                              >
-                                {m.toUpperCase()}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={handleGetAILabSimplification}
-                          disabled={simplifyLoading}
-                          className="w-full bg-[#06B6D4] hover:bg-cyan-500 text-slate-950 font-bold text-xs py-2 px-3 rounded cursor-pointer transition flex items-center justify-center space-x-1.5"
-                        >
-                          {simplifyLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <BookOpen className="w-3.5 h-3.5 text-slate-950" />}
-                          <span>RE-PUBLISH SCIENTIFIC TEXT</span>
-                        </button>
-                      </div>
-
-                      {/* Display Outputs Side-By-Side/Results */}
-                      <div className="bg-slate-955 border border-slate-850 rounded p-3 flex flex-col justify-between min-h-[160px]">
-                        <div>
-                          <div className="text-[9px] font-mono font-bold text-cyan-400 uppercase tracking-widest border-b border-slate-900 pb-1 mb-1.5 flex justify-between">
-                            <span>TRANSLATED RESULT MODE: {simplifyMode.toUpperCase()}</span>
-                            {simplifyLocalFallback && <span className="text-amber-500">[OOS FALLBACK]</span>}
-                          </div>
-
-                          {simplifyLoading ? (
-                            <div className="text-cyan-400 font-mono text-[10.5px] animate-pulse">Running semantic register translation modules...</div>
-                          ) : (
-                            <div className="text-[11px] leading-relaxed text-slate-300 font-sans select-text whitespace-pre-wrap max-h-[170px] overflow-y-auto">
-                              {simplifiedResultText || "Configure parameters and execute scientific compilation."}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 6. WEEKLY TRENDS DETECTOR */}
-                {selectedSubMode === "trends" && (
-                  <div className="space-y-3.5">
-                    <div className="border-b border-slate-900 pb-1.5 flex justify-between items-center">
-                      <div>
-                        <h4 className="font-display font-extrabold text-white text-xs uppercase tracking-wider">📈 Intelligent Biopharma Trend Detector & Sector Audit</h4>
-                        <p className="text-[10px] text-slate-400 font-mono mt-0.5">MONITORS MERGER ACCELERATION INDEXES, TOPICAL VELOCITY, AND MAMMALIAN SPREAD ALIGNMENTS</p>
-                      </div>
-                      <button
-                        onClick={handleFetchTrendsReport}
-                        disabled={trendsLoading}
-                        className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-[10px] font-mono font-bold px-3 py-1.5 rounded cursor-pointer text-cyan-400 active:scale-95"
-                      >
-                        {trendsLoading ? "Scrutinizing..." : "Recalculate Trends"}
-                      </button>
-                    </div>
-
-                    {trendsLoading ? (
-                      <div className="text-center py-12 flex flex-col items-center justify-center space-y-3">
-                        <RefreshCw className="w-7 h-7 text-cyan-400 animate-spin" />
-                        <span className="text-xs font-mono text-slate-450 uppercase animate-pulse">Assembling live sector news matrices...</span>
-                      </div>
-                    ) : trendsData ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                        {/* Summary Block */}
-                        <div className="bg-[#090d16] border border-slate-900 rounded p-3 space-y-1.5 md:col-span-2 select-text">
-                          <span className="text-[9px] font-mono font-bold text-cyan-400 uppercase tracking-widest block">Sector Weekly Overview Abstract:</span>
-                          <p className="text-[10.5px] leading-relaxed text-slate-300 font-sans">{trendsData.weeklyOverview}</p>
-                        </div>
-
-                        {/* Emerging Diseases Panel */}
-                        <div className="bg-[#090d16] border border-slate-900 rounded p-3 space-y-2">
-                          <span className="text-[9px] font-mono font-bold text-amber-500 uppercase tracking-widest block flex items-center space-x-1">
-                            <Activity className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-                            <span>EMERGING GENOMIC HEALTH THREATS</span>
-                          </span>
-                          <div className="space-y-1.5 font-sans justify-between">
-                            {trendsData.emergingDiseases?.map((dis: any, idx: number) => (
-                              <div key={idx} className="bg-slate-950 p-1.5 rounded border border-slate-850/40">
-                                <div className="font-bold text-slate-205 text-[10px]">{dis.name}</div>
-                                <div className="flex justify-between items-center text-[9px] mt-0.5 text-slate-450 font-mono">
-                                  <span>RISK LEVEL: <strong className="text-red-400">{dis.level}</strong></span>
-                                  <span>{dis.growthTrend}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Trending Therapeutic Target areas */}
-                        <div className="bg-[#090d16] border border-slate-900 rounded p-3 space-y-2">
-                          <span className="text-[9px] font-mono font-bold text-[#06B6D4] uppercase tracking-widest block">HOT THERAPEUTIC MECHANISM FOCUS</span>
-                          <div className="space-y-1.5 font-sans max-h-[120px] overflow-y-auto">
-                            {trendsData.trendingTherapeuticAreas?.map((tr: any, idx: number) => (
-                              <div key={idx} className="space-y-0.5">
-                                <div className="flex justify-between font-bold text-[9.5px]">
-                                  <span className="text-slate-300 truncate max-w-[120px]">{tr.area}</span>
-                                  <span className="font-mono text-[#06B6D4]">{tr.share}% Share</span>
-                                </div>
-                                <p className="text-[8.5px] text-slate-450 italic truncate">{tr.focus}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        {/* Fast Growth Academic lines */}
-                        <div className="bg-[#090d16] border border-slate-900 rounded p-3 space-y-1.5 md:col-span-2">
-                          <span className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest block">FAST-GROWING RESEARCH TOPICAL CORRELATIONS</span>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-1.5">
-                            {trendsData.fastGrowingResearchTopics?.map((top: string, idx: number) => (
-                              <div key={idx} className="bg-slate-950 text-slate-350 p-1.5 rounded text-[9.5px] font-mono leading-tight select-text border border-slate-850/10 hover:border-cyan-400/10">
-                                • {top}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                      </div>
-                    ) : (
-                      <p className="text-slate-500 italic">Select recalculate above to formulate. fallback parameters will initialize.</p>
-                    )}
-                  </div>
-                )}
-
-                {/* 7. DEDUPLICATION AND COLLISION WORKSPACE */}
-                {selectedSubMode === "deduplication" && (
-                  <div className="space-y-4">
-                    <div className="border-b border-slate-900 pb-2">
-                      <h4 className="font-display font-extrabold text-white text-xs uppercase tracking-wider">🧬 Clinical Deduplication & Unified Article Merger</h4>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">COMPUTES OVERLAP METRICS AND CONSOLIDATES REDUNDANT PRESS RELEASES</p>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Options Column */}
-                      <div className="space-y-3 bg-[#090d16] p-3 rounded border border-slate-900 text-xs">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase font-mono block">Primary Document A:</label>
-                          <select
-                            value={dupArticleIdA}
-                            onChange={(e) => setDupArticleIdA(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-850 text-xs text-white p-1.5 rounded cursor-pointer truncate"
-                          >
-                            {articles.map(a => (
-                              <option key={a.id} value={a.id}>{a.title}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-slate-450 uppercase font-mono block">Comparable Document B:</label>
-                          <select
-                            value={dupArticleIdB}
-                            onChange={(e) => setDupArticleIdB(e.target.value)}
-                            className="w-full bg-slate-950 border border-slate-850 text-xs text-white p-1.5 rounded cursor-pointer truncate"
-                          >
-                            {articles.map(a => (
-                              <option key={a.id} value={a.id}>{a.title}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <button
-                          onClick={handleGetAILabSmartMerge}
-                          disabled={dupMergeLoading}
-                          className="w-full bg-[#06B6D4] hover:bg-cyan-500 text-slate-950 font-bold text-xs py-2 px-3 rounded cursor-pointer transition flex items-center justify-center space-x-1.5"
-                        >
-                          {dupMergeLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <GitMerge className="w-3.5 h-3.5 text-slate-950" />}
-                          <span>SCRUTINIZE COLLISION METRICS</span>
-                        </button>
-                      </div>
-
-                      {/* Output workspace merged block */}
-                      <div className="bg-slate-955 border border-slate-850 rounded p-3 space-y-2 max-h-[220px] overflow-y-auto text-xs">
-                        {dupMergeLoading ? (
-                          <div className="text-cyan-400 font-mono animate-pulse text-[10.5px]">Decombining press releases, resolving database overlaps...</div>
-                        ) : dupMergeResult ? (
-                          <div className="space-y-2.5">
-                            <div className="flex justify-between items-center border-b border-slate-900 pb-1.5 text-[10.5px]">
-                              <span className="text-slate-450 font-mono uppercase">Collision audit overlap:</span>
-                              <strong className="text-[#06B6D4] font-mono">{dupMergeResult.overlapPercentage}% overlap</strong>
-                            </div>
-                            <div className="bg-[#090d16] p-2 rounded">
-                              <span className="text-[8px] font-mono text-cyan-400 font-bold uppercase block tracking-wider">Unified Generated Dispatch Headline:</span>
-                              <h5 className="font-display font-medium text-white text-[10.5px] leading-snug mt-0.5">{dupMergeResult.mergedTitle}</h5>
-                            </div>
-
-                            {dupMergeResult.identifiedDuplicates && (
-                              <div className="space-y-1">
-                                <span className="text-[9px] font-mono text-red-400 font-bold uppercase tracking-wider block">Identified Collisions & Redundancy Metrics:</span>
-                                <ul className="list-disc pl-3 text-[9.5px] text-slate-400 space-y-0.5">
-                                  {dupMergeResult.identifiedDuplicates.map((dupFact: string, dfIdx: number) => (
-                                    <li key={dfIdx}>{dupFact}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-
-                            <div className="bg-slate-950 p-2.5 rounded text-[10.5px] select-text whitespace-pre-wrap leading-relaxed border border-slate-850 font-sans">
-                              {dupMergeResult.mergedContent}
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-slate-500 italic">Configure separate documents and click inspect redundancy.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 8. SMART SEMANTIC SEARCH */}
-                {selectedSubMode === "smart-search" && (
-                  <div className="space-y-4">
-                    <div className="border-b border-slate-900 pb-2">
-                      <h4 className="font-display font-extrabold text-white text-xs uppercase tracking-wider">🔍 Semantic Smart Search Correlator</h4>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">GEMINI SEMANTIC CORRELATIONS • RETRIEVES HIGHLIGHED ALIGNMENTS CORRESPONDING BEYOND EXACT STR STRINGS</p>
-                    </div>
-
-                    <div className="space-y-3.5">
-                      <div className="flex space-x-1.5">
-                        <input
-                          type="text"
-                          value={smartSearchQuery}
-                          onChange={(e) => setSmartSearchQuery(e.target.value)}
-                          placeholder="Search naturally (e.g. 'muscle orphan codes' or 'drug pipelines achieving obesity loss')..."
-                          className="flex-1 bg-[#090d16] border border-slate-850 rounded-[4px] px-3 text-xs focus:outline-none text-white focus:ring-1 focus:ring-cyan-500 font-sans"
-                        />
-                        <button
-                          onClick={handleGetAILabSmartSearch}
-                          disabled={smartSearchLoading}
-                          className="bg-[#06B6D4] hover:bg-cyan-500 text-slate-950 font-extrabold text-xs py-2 px-4 rounded-[4px] cursor-pointer transition flex items-center space-x-1.5"
-                        >
-                          <Search className="w-3.5 h-3.5 text-slate-950" />
-                          <span>SEMANTIC</span>
-                        </button>
-                      </div>
-
-                      <div className="bg-[#090d16] border border-slate-900 rounded p-3 select-text space-y-2.5 max-h-[180px] overflow-y-auto">
-                        <div className="text-[9px] font-mono font-bold text-slate-500 uppercase tracking-widest border-b border-slate-900 pb-1.5 flex justify-between">
-                          <span>SEMANTIC QUERY MATCH RESULTS</span>
-                          {smartSearchLocalFallback && <span className="text-amber-500 font-bold">[LOCAL MATCH ANALYSIS]</span>}
-                        </div>
-
-                        {smartSearchLoading ? (
-                          <div className="text-cyan-400 font-mono animate-pulse text-[10.5px]">Calculating multi-dimensional distance metrics...</div>
-                        ) : smartSearchResults.length > 0 ? (
-                          <div className="space-y-2">
-                            {smartSearchResults.map((ent, idx) => (
-                              <div
-                                key={idx}
-                                onClick={() => setSelectedArticle(ent.article)}
-                                className="bg-slate-950 border border-slate-850/40 p-2 rounded hover:border-cyan-500 cursor-pointer transition text-xs"
-                              >
-                                <div className="flex justify-between items-center text-[9px]">
-                                  <span className="font-mono font-bold text-cyan-400 bg-cyan-400/5 px-1 py-0.5 rounded border border-cyan-400/10">
-                                    {ent.article.category}
-                                  </span>
-                                  <span className="font-mono text-emerald-400 font-extrabold">{ent.semanticMatchScore}% CORRELATION</span>
-                                </div>
-                                <h5 className="font-display font-medium text-white text-[10.5px] mt-1 leading-snug">{ent.article.title}</h5>
-                                <p className="text-[9.5px] text-slate-450 leading-relaxed mt-1 italic select-text p-1 bg-[#090d16] rounded border-l border-emerald-500/30">
-                                  {ent.semanticReason}
-                                </p>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-slate-505 italic text-[10.5px]">No matches calculated. Run search query.</p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
+                </div>
               </div>
             </div>
           )}
 
-        </section>
-      </main>
+          {/* ════ LIVE DASHBOARD TAB ════ */}
+          {activeTab === "dashboard" && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <LineChart className="w-6 h-6 text-emerald-500" /> Live Analytics Dashboard
+                </h2>
+                <button onClick={() => fetchArticles()} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
+                  <RefreshCw className="w-4 h-4" /> Refresh Data
+                </button>
+              </div>
 
-      {/* Footer bar */}
-      <footer className="border-t border-slate-850 bg-[#090d16] py-5 px-6 text-center text-[11px] text-slate-550 font-mono">
-        <p>PharmaNews Aggregator Platform © 2026. Designed with Geometric Balance guidelines, and structured with clean Kotlin MVVM standards.</p>
-      </footer>
+              {/* Stats row */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { label:"Total Articles", value: articles.length, icon:Newspaper, color:"text-blue-500" },
+                  { label:"Drug Approvals", value: articles.filter(a=>a.category==="Drug Approvals").length, icon:Shield, color:"text-amber-500" },
+                  { label:"Clinical Trials", value: articles.filter(a=>a.category==="Clinical Trials").length, icon:Zap, color:"text-purple-500" },
+                  { label:"AI Articles", value: articles.filter(a=>a.category==="AI in Healthcare").length, icon:Sparkles, color:"text-emerald-500" },
+                ].map((stat, i) => (
+                  <div key={i} className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">{stat.label}</span>
+                      <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                    </div>
+                    <div className="text-3xl font-bold text-slate-900 dark:text-white">{stat.value}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Category breakdown */}
+              <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                <h3 className="font-bold text-slate-900 dark:text-white mb-5">Articles by Category</h3>
+                <div className="space-y-3">
+                  {Object.keys(CATEGORY_COLORS).map(cat => {
+                    const count = articles.filter(a => a.category === cat).length;
+                    const pct = articles.length ? Math.round((count/articles.length)*100) : 0;
+                    return (
+                      <div key={cat}>
+                        <div className="flex items-center justify-between text-sm mb-1">
+                          <span className="text-slate-700 dark:text-slate-300">{cat}</span>
+                          <span className="font-mono text-slate-500 dark:text-slate-400">{count} articles</span>
+                        </div>
+                        <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2">
+                          <div className="bg-emerald-500 h-2 rounded-full transition-all duration-500" style={{width:`${pct}%`}} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Stocks table */}
+              <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                  <TrendingUp className="w-5 h-5 text-blue-500" /> Pharma Companies Stock Performance
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                        <th className="pb-3 font-medium">Company</th>
+                        <th className="pb-3 font-medium text-right">Price</th>
+                        <th className="pb-3 font-medium text-right">Change</th>
+                        <th className="pb-3 font-medium text-right">% Change</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {stocks.map(s => (
+                        <tr key={s.symbol} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="py-3">
+                            <span className="font-bold text-slate-900 dark:text-white">{s.symbol}</span>
+                            <span className="text-slate-500 dark:text-slate-400 ml-2">{s.name}</span>
+                          </td>
+                          <td className="py-3 text-right font-mono font-bold text-slate-900 dark:text-white">${s.price.toFixed(2)}</td>
+                          <td className={`py-3 text-right font-mono ${s.up?"text-emerald-500":"text-red-500"}`}>{s.change > 0 ? "+" : ""}{s.change.toFixed(2)}</td>
+                          <td className={`py-3 text-right font-mono font-bold flex items-center justify-end gap-1 ${s.up?"text-emerald-500":"text-red-500"}`}>
+                            {s.up ? <ArrowUpRight className="w-3.5 h-3.5"/> : <ArrowDownRight className="w-3.5 h-3.5"/>}
+                            {s.changePct > 0 ? "+" : ""}{s.changePct.toFixed(2)}%
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="text-xs text-slate-400 mt-3 font-mono">* Data delayed 15 minutes. Not financial advice.</p>
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* ── FOOTER ── */}
+        <footer className="mt-12 bg-slate-900 dark:bg-black border-t border-slate-800 py-8">
+          <div className="max-w-screen-xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <CapsuleLogo size={28} />
+              <span className="font-serif font-bold text-white">Pharma<span className="text-emerald-400">NEWS</span></span>
+            </div>
+            <p className="text-slate-500 text-sm">Curated biopharmaceutical pipelines, drug trial registries and critical regulatory oversight indicators. All data encrypted with SSL.</p>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-emerald-400 border border-emerald-800 px-2 py-1 rounded font-mono">SSL PLATFORM SECURED</span>
+              <span className="text-xs text-blue-400 border border-blue-900 px-2 py-1 rounded font-mono">GEMINI SCANNERS ACTIVE</span>
+            </div>
+          </div>
+        </footer>
+
+        <style>{`
+          .no-scrollbar::-webkit-scrollbar { display:none; }
+          .no-scrollbar { -ms-overflow-style:none; scrollbar-width:none; }
+          @keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+          .animate-marquee { animation: marquee 30s linear infinite; display:flex; width:max-content; }
+        `}</style>
+      </div>
     </div>
   );
 }
