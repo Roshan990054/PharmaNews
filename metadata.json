@@ -1,0 +1,6 @@
+{
+  "name": "PharmaNews",
+  "description": "A premium pharmaceutical news aggregator Android application built in Kotlin, Dagger Hilt, Retrofit, Room, and Material Design 3.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
