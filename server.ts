@@ -3,6 +3,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
+import { scheduleDailyNewsUpdate, getCachedNews, fetchAndUpdateNews } from "./news-scheduler.js";
 
 dotenv.config();
 
@@ -966,6 +967,34 @@ Provide your response strictly in JSON array format with this structure:
   }
 });
 
+// ============================================================
+// AUTO NEWS API ENDPOINTS
+// ============================================================
+
+// Get today's auto-fetched news
+app.get("/api/auto-news", (req, res) => {
+  const news = getCachedNews();
+  res.json({
+    articles: news,
+    count: news.length,
+    source: news.length > 0 ? "live" : "local",
+    message: news.length > 0
+      ? "Live pharma news updated daily at 5 AM IST"
+      : "Using local articles — add NEWS_API_KEY for live news"
+  });
+});
+
+// Manual trigger to refresh news
+app.post("/api/auto-news/refresh", async (req, res) => {
+  try {
+    const articles = await fetchAndUpdateNews();
+    res.json({ success: true, count: articles.length });
+  } catch (error) {
+    res.json({ success: false, error: String(error) });
+  }
+});
+
+
 // Vite middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
@@ -988,3 +1017,4 @@ async function startServer() {
 }
 
 startServer();
+scheduleDailyNewsUpdate();
