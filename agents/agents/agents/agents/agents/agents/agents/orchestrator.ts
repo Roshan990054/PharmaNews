@@ -4,6 +4,7 @@ import { runSEOOptimizer } from "./phase3-seo-optimizer.js";
 import { runSocialPublisher } from "./phase4-social-publisher.js";
 import { runNewsletterGenerator } from "./phase5-newsletter.js";
 import { runCompetitorIntelligence } from "./phase6-competitor-intelligence.js";
+import { scheduleCEOAgent } from "./ceo-executive-agent.js";
 
 // ============================================================
 // MASTER ORCHESTRATOR
@@ -31,8 +32,11 @@ function isSunday(): boolean {
 
 export async function startAllAgents(): Promise<void> {
   console.log("🚀 PharmaNews AI Agent Orchestrator Starting...");
-  console.log("📋 6 Agents: News Collector → Article Writer → SEO → Social → Newsletter → Competitor Intel");
+  console.log("📋 7 Agents: CEO → News Collector → Article Writer → SEO → Social → Newsletter → Competitor Intel");
   console.log("");
+
+  // ── CEO AGENT: runs at 4:00 AM IST (before all others)
+  scheduleCEOAgent();
 
   // ── PHASE 1: News Collector ── runs every day at 5:00 AM IST
   scheduleNewsCollector();
@@ -99,8 +103,9 @@ export async function startAllAgents(): Promise<void> {
   console.log(`⏰ [Phase 6] Competitor Intel runs every Sunday at 9:00 AM IST`);
 
   console.log("");
-  console.log("✅ All 6 agents scheduled and running!");
+  console.log("✅ All 7 agents scheduled and running!");
   console.log("📅 Daily Schedule (IST):");
+  console.log("   4:00 AM → CEO Executive Agent (audits everything)");
   console.log("   5:00 AM → Phase 1: News Collector");
   console.log("   5:30 AM → Phase 2: Article Writer");
   console.log("   6:00 AM → Phase 3: SEO Optimizer");
