@@ -91,6 +91,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<"news"|"ai-lab"|"dashboard">("news");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [clinicalDropOpen, setClinicalDropOpen] = useState(false);
+  const [selectedTopicPage, setSelectedTopicPage] = useState<string|null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedArticle, setSelectedArticle] = useState<Article|null>(null);
@@ -210,7 +211,118 @@ export default function App() {
   const paginated = filtered.slice((currentPage-1)*POSTS_PER_PAGE, currentPage*POSTS_PER_PAGE);
   const featured = articles.find(a => a.isFeatured) || articles[0];
 
-  // ─── ARTICLE DETAIL ────────────────────────────────────────────────────────
+  // ─── DEDICATED TOPIC PAGE ──────────────────────────────────────────────────
+  if (selectedTopicPage && !selectedArticle) {
+    const topicArticles = articles.filter(a =>
+      a.category === selectedTopicPage ||
+      a.title.toLowerCase().includes(selectedTopicPage.toLowerCase()) ||
+      a.summary?.toLowerCase().includes(selectedTopicPage.toLowerCase())
+    );
+    return (
+      <div className={theme === "dark" ? "dark" : ""}>
+        <div className="min-h-screen bg-slate-50 dark:bg-[#070d1a] text-slate-900 dark:text-slate-100 font-sans">
+          {/* Header */}
+          <header className="bg-white dark:bg-[#070d1a] border-b border-slate-200 dark:border-slate-800 sticky top-0 z-50">
+            <div className="max-w-screen-xl mx-auto px-6 py-4 flex items-center gap-4">
+              <button onClick={() => setSelectedTopicPage(null)}
+                className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 font-medium text-sm">
+                <ChevronLeft className="w-4 h-4" /> Back to News
+              </button>
+              <div className="flex items-center gap-2 ml-4">
+                <CapsuleLogo size={32} />
+                <span className="font-serif font-bold text-xl text-slate-900 dark:text-white">
+                  Pharma<span className="text-emerald-600 dark:text-emerald-400">NEWS</span>
+                </span>
+              </div>
+            </div>
+          </header>
+
+          <div className="max-w-screen-xl mx-auto px-6 py-10">
+            {/* Topic Hero */}
+            <div className="bg-gradient-to-br from-emerald-900 to-slate-900 rounded-2xl p-8 mb-8 border border-emerald-800">
+              <div className="flex items-center gap-2 text-emerald-400 text-xs font-mono uppercase tracking-widest mb-3">
+                <BookOpen className="w-3.5 h-3.5" /> Clinical Specialty Topic
+              </div>
+              <h1 className="text-4xl font-serif font-bold text-white mb-3">{selectedTopicPage}</h1>
+              <p className="text-slate-400 max-w-2xl">Latest pharmaceutical news, clinical trials, drug approvals and research updates related to {selectedTopicPage}.</p>
+              <div className="flex items-center gap-4 mt-4 text-sm">
+                <span className="text-emerald-400 font-mono">{topicArticles.length} articles found</span>
+                <span className="text-slate-500">• Updated daily at 5 AM IST</span>
+              </div>
+            </div>
+
+            {/* Topic Articles */}
+            {topicArticles.length === 0 ? (
+              <div className="text-center py-20">
+                <BookOpen className="w-12 h-12 text-slate-600 mx-auto mb-4" />
+                <p className="text-slate-500 text-lg font-medium">No articles yet for {selectedTopicPage}</p>
+                <p className="text-slate-600 text-sm mt-2">Our AI agent will fetch related articles at 5 AM IST tomorrow.</p>
+                <button onClick={() => { setSelectedTopicPage(null); setActiveTab("news"); }}
+                  className="mt-6 px-6 py-2.5 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 transition-colors">
+                  Browse All News
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2 space-y-4">
+                  {topicArticles.map(article => (
+                    <div key={article.id} onClick={() => { setSelectedArticle(article); setArticleView("detail"); }}
+                      className="group flex gap-5 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 p-5 cursor-pointer transition-all shadow-sm">
+                      <img src={article.imageUrl} alt={article.title} className="w-40 h-28 object-cover rounded-lg flex-none group-hover:scale-105 transition-transform duration-300" />
+                      <div className="flex-1 min-w-0">
+                        <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded border uppercase tracking-wider mb-2 ${CATEGORY_COLORS[article.category] || "bg-slate-100 text-slate-700 border-slate-200"}`}>
+                          {article.category}
+                        </span>
+                        <h3 className="font-serif font-bold text-lg leading-snug mb-2 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">{article.title}</h3>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm line-clamp-2">{article.summary}</p>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-slate-400">
+                          <span>{article.source}</span>
+                          <span>•</span>
+                          <span>{article.date}</span>
+                          <span>•</span>
+                          <span>{article.readTime}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Sidebar */}
+                <aside className="space-y-6">
+                  <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+                    <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                      <TrendingUp className="w-4 h-4 text-emerald-500" /> Related Topics
+                    </h3>
+                    <div className="flex flex-wrap gap-2">
+                      {CLINICAL_TOPICS.filter(t => t !== selectedTopicPage).slice(0, 12).map(t => (
+                        <button key={t} onClick={() => { setSelectedTopicPage(t); fetchArticles(t); }}
+                          className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full text-xs hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-900/30 dark:hover:text-emerald-400 transition-colors">
+                          {t}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+                    <h3 className="font-bold text-slate-900 dark:text-white mb-3 flex items-center gap-2">
+                      <Mail className="w-4 h-4 text-emerald-500" /> Get {selectedTopicPage} Updates
+                    </h3>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-3">Get daily alerts for {selectedTopicPage} news directly in your inbox.</p>
+                    <input type="email" placeholder="your@email.com"
+                      className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm bg-white dark:bg-slate-800 mb-2 outline-none focus:border-emerald-500 text-slate-900 dark:text-white placeholder-slate-400" />
+                    <button className="w-full py-2 bg-emerald-600 text-white rounded-lg text-sm font-bold hover:bg-emerald-700 transition-colors">
+                      Subscribe to {selectedTopicPage} Alerts
+                    </button>
+                  </div>
+                </aside>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+
   if (selectedArticle) {
     return (
       <div className={theme === "dark" ? "dark" : ""}>
@@ -358,28 +470,41 @@ export default function App() {
               {/* Clinical topics dropdown */}
               <div className="relative flex-none">
                 <button onClick={() => setClinicalDropOpen(!clinicalDropOpen)}
-                  className="flex items-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white border border-slate-600 rounded-sm mr-4 hover:border-emerald-500 transition-colors whitespace-nowrap">
-                  Clinical Specialty Topics <ChevronDown className={`w-3.5 h-3.5 transition-transform ${clinicalDropOpen ? "rotate-180" : ""}`} />
+                  className={`flex items-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-wider text-white border rounded-sm mr-4 transition-colors whitespace-nowrap ${clinicalDropOpen ? "border-emerald-500 bg-emerald-900/20" : "border-slate-600 hover:border-emerald-500"}`}>
+                  Clinical Specialty Topics <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${clinicalDropOpen ? "rotate-180" : ""}`} />
                 </button>
                 {clinicalDropOpen && (
-                  <div className="absolute top-full left-0 z-50 w-screen max-w-4xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-sm flex items-center gap-2">
-                        <BookOpen className="w-4 h-4 text-emerald-500" /> Comprehensive Clinical Topics Index
-                      </h3>
-                      <button onClick={() => setClinicalDropOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
-                        <X className="w-4 h-4" />
-                      </button>
+                  <>
+                    {/* Click outside overlay */}
+                    <div className="fixed inset-0 z-[90]" onClick={() => setClinicalDropOpen(false)} />
+                    <div className="fixed left-0 top-auto z-[100] w-screen bg-white dark:bg-slate-900 border-y border-slate-200 dark:border-slate-700 shadow-2xl p-6 max-h-[70vh] overflow-y-auto">
+                      <div className="max-w-screen-xl mx-auto">
+                        <div className="flex items-center justify-between mb-5">
+                          <h3 className="font-bold text-slate-900 dark:text-white uppercase tracking-wider text-sm flex items-center gap-2">
+                            <BookOpen className="w-4 h-4 text-emerald-500" /> Comprehensive Clinical Topics Index
+                          </h3>
+                          <button onClick={() => setClinicalDropOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded">
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-8 gap-y-2.5">
+                          {CLINICAL_TOPICS.map(t => (
+                            <button key={t} onClick={() => {
+                              setActiveCategory(t);
+                              setClinicalDropOpen(false);
+                              setActiveTab("news");
+                              setSelectedTopicPage(t);
+                              fetchArticles(t);
+                            }}
+                              className="text-left text-sm text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 py-1 transition-colors flex items-center gap-1.5 group">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 opacity-0 group-hover:opacity-100 transition-opacity flex-none" />
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-2">
-                      {CLINICAL_TOPICS.map(t => (
-                        <button key={t} onClick={() => { setActiveCategory(t); setClinicalDropOpen(false); setActiveTab("news"); fetchArticles(t); }}
-                          className="text-left text-sm text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 py-0.5 transition-colors">
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                  </>
                 )}
               </div>
 
