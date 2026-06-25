@@ -4,7 +4,7 @@ import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { scheduleDailyNewsUpdate, getCachedNews, fetchAndUpdateNews } from "./news-scheduler.js";
-import { startAllAgents } from "./agents/orchestrator.js";
+import { startAllAgents } from "./all-agents.js";
 
 dotenv.config();
 
