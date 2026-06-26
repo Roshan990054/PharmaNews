@@ -996,6 +996,104 @@ app.post("/api/auto-news/refresh", async (req, res) => {
 });
 
 
+// ============================================================
+// SEO ROUTES — Sitemap, Robots.txt, Google Verification
+// ============================================================
+
+// Sitemap XML — tells Google all your pages
+app.get("/sitemap.xml", async (req, res) => {
+  const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+
+  // Get all published articles from Supabase
+  let articleUrls = "";
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const { data: articles } = await supabase
+      .from("articles")
+      .select("id, created_at, category")
+      .eq("published", true)
+      .order("created_at", { ascending: false })
+      .limit(500);
+
+    articleUrls = (articles || []).map(a => `
+  <url>
+    <loc>${SITE_URL}/article/${a.id}</loc>
+    <lastmod>${new Date(a.created_at).toISOString().split("T")[0]}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>`).join("");
+  } catch (e) {}
+
+  const categories = [
+    "Drug Approvals", "Clinical Trials", "Biotechnology",
+    "AI in Healthcare", "Industry News", "Medical Research",
+    "Healthcare Policy", "Oncology", "Vaccines"
+  ];
+
+  const categoryUrls = categories.map(cat => `
+  <url>
+    <loc>${SITE_URL}/category/${encodeURIComponent(cat.toLowerCase().replace(/ /g, "-"))}</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>`).join("");
+
+  const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+  <!-- Main Pages -->
+  <url>
+    <loc>${SITE_URL}</loc>
+    <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>${SITE_URL}/ai-lab</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>${SITE_URL}/dashboard</loc>
+    <changefreq>daily</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <!-- Categories -->
+  ${categoryUrls}
+  <!-- Articles -->
+  ${articleUrls}
+</urlset>`;
+
+  res.setHeader("Content-Type", "application/xml");
+  res.send(sitemap);
+});
+
+// Robots.txt — tells Google what to crawl
+app.get("/robots.txt", (req, res) => {
+  const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+  res.setHeader("Content-Type", "text/plain");
+  res.send(`User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /private/
+
+# Sitemaps
+Sitemap: ${SITE_URL}/sitemap.xml
+
+# Crawl-delay for bots
+Crawl-delay: 1`);
+});
+
+// Google Site Verification — add your verification code to Render env
+app.get("/google-site-verification:code", (req, res) => {
+  const code = process.env.GOOGLE_SITE_VERIFICATION || "";
+  res.setHeader("Content-Type", "text/html");
+  res.send(`google-site-verification: ${code}`);
+});
+
 // Vite middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
