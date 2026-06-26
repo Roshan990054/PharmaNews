@@ -146,40 +146,112 @@ Article: ${article.title} — ${article.category}`;
 }
 
 // ── PHASE 4: SOCIAL PUBLISHER ──────────────────────────────
+// ── Buffer API Helper ──────────────────────────────────────
+async function getBufferProfiles(): Promise<any[]> {
+  const token = process.env.BUFFER_ACCESS_TOKEN;
+  if (!token) return [];
+  try {
+    const res = await fetch(`https://api.bufferapp.com/1/profiles.json?access_token=${token}`);
+    return await res.json();
+  } catch { return []; }
+}
+
+async function postToBuffer(text: string, profileIds: string[]): Promise<boolean> {
+  const token = process.env.BUFFER_ACCESS_TOKEN;
+  if (!token || !profileIds.length) return false;
+  try {
+    const body = new URLSearchParams();
+    body.append("text", text);
+    body.append("access_token", token);
+    body.append("now", "true");
+    profileIds.forEach(id => body.append("profile_ids[]", id));
+    const res = await fetch("https://api.bufferapp.com/1/updates/create.json", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString()
+    });
+    const data = await res.json();
+    return data.success === true;
+  } catch { return false; }
+}
+
 async function runPhase4(): Promise<number> {
-  console.log("📱 [Phase 4] Social Publisher starting...");
+  console.log("📱 [Phase 4] Social Publisher (Buffer) starting...");
+
+  const bufferToken = process.env.BUFFER_ACCESS_TOKEN;
+  if (!bufferToken) {
+    console.log("  ⚠️  No BUFFER_ACCESS_TOKEN — add it to Render environment");
+    return 0;
+  }
+
+  // Get Buffer profile IDs
+  const profiles = await getBufferProfiles();
+  if (!profiles.length) {
+    console.log("  ⚠️  No Buffer profiles found");
+    return 0;
+  }
+  const profileIds = profiles.map((p: any) => p.id);
+  console.log(`  ✅ Found ${profiles.length} Buffer profiles: ${profiles.map((p:any) => p.service).join(", ")}`);
+
+  // Get today's top articles
   const today = new Date().toISOString().split("T")[0];
   const { data: articles } = await getSupabase().from("articles")
     .select("*").gte("created_at", today).eq("published", true)
-    .order("created_at", { ascending: false }).limit(2);
+    .order("created_at", { ascending: false }).limit(3);
 
-  if (!articles?.length) { console.log("  ℹ️  No new articles to post"); return 0; }
+  if (!articles?.length) { console.log("  ℹ️  No new articles to post today"); return 0; }
 
   let posted = 0;
   for (const article of articles) {
+    // Check if already posted today
     const { data: existing } = await getSupabase().from("social_posts")
-      .select("id").eq("article_id", article.id).eq("platform", "twitter").limit(1);
+      .select("id").eq("article_id", article.id).eq("platform", "buffer").limit(1);
     if (existing?.length) continue;
 
     try {
-      const prompt = `Write a professional Twitter post for this pharma news (max 250 chars with hashtags and link):
+      // Generate engaging caption with Gemini
+      const prompt = `Write an engaging social media post for this pharma news.
+Max 250 characters. Include 3-4 relevant hashtags. End with the link.
+
 Title: ${article.title}
 Category: ${article.category}
 Link: ${SITE_URL}
-Write ONLY the tweet text.`;
-      const res = await getGemini().models.generateContent({ model: "gemini-2.0-flash", contents: prompt });
-      const caption = res.text?.trim() || `${article.title}\n${SITE_URL} #PharmaNews #Healthcare`;
 
-      await getSupabase().from("social_posts").insert({
-        article_id: article.id, platform: "twitter",
-        caption, hashtags: (caption.match(/#\w+/g) || []).join(", "),
-        status: "pending", posted_at: new Date().toISOString()
+Write ONLY the post text, nothing else.`;
+
+      const res = await getGemini().models.generateContent({
+        model: "gemini-2.0-flash", contents: prompt
       });
-      posted++;
+      const caption = res.text?.trim() ||
+        `🔬 ${article.title}\n\nRead more: ${SITE_URL}\n\n#PharmaNews #Healthcare #FDA #Pharma`;
+
+      // Post to ALL connected Buffer profiles (Twitter, LinkedIn, Instagram)
+      const success = await postToBuffer(caption, profileIds);
+
+      // Save to Supabase
+      await getSupabase().from("social_posts").insert({
+        article_id: article.id,
+        platform: "buffer",
+        caption,
+        hashtags: (caption.match(/#\w+/g) || []).join(", "),
+        status: success ? "posted" : "pending",
+        post_url: SITE_URL,
+        posted_at: new Date().toISOString()
+      });
+
+      if (success) {
+        posted++;
+        console.log(`  ✅ Posted to all platforms: ${article.title?.substring(0, 50)}...`);
+      } else {
+        console.log(`  📋 Queued in Buffer: ${article.title?.substring(0, 50)}...`);
+      }
     } catch (e) { console.error("  Social error:", e); }
+    await new Promise(r => setTimeout(r, 2000));
   }
-  await logAgent("Phase4-SocialPublisher", "success", `Prepared ${posted} social posts`, posted);
-  console.log(`✅ [Phase 4] Done — ${posted} posts prepared`);
+
+  await logAgent("Phase4-SocialPublisher", "success",
+    `Posted ${posted} articles to Buffer (Twitter + LinkedIn + Instagram)`, posted);
+  console.log(`✅ [Phase 4] Done — ${posted} posts published to all platforms!`);
   return posted;
 }
 
