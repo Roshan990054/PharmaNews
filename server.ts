@@ -997,6 +997,179 @@ app.post("/api/auto-news/refresh", async (req, res) => {
 
 
 // ============================================================
+// NEWSLETTER, BOOKMARKS, AGENT STATUS — Complete API Suite
+// ============================================================
+
+// Newsletter subscribe
+app.post("/api/newsletter/subscribe", async (req, res) => {
+  const { email, name } = req.body;
+  if (!email) return res.json({ success: false, error: "Email required" });
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const { error } = await supabase.from("subscribers").upsert(
+      { email, name: name || "", active: true, subscribed_at: new Date().toISOString() },
+      { onConflict: "email" }
+    );
+    if (error) return res.json({ success: false, error: error.message });
+    // Send welcome email via Resend if configured
+    const resendKey = process.env.RESEND_API_KEY;
+    if (resendKey) {
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "PharmaNews <newsletter@pharmanews.onrender.com>",
+          to: email,
+          subject: "Welcome to PharmaNews Weekly Digest! 💊",
+          html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+            <div style="background:#1e3a5f;padding:24px;text-align:center">
+              <h1 style="color:white;margin:0">Pharma<span style="color:#60a5fa">NEWS</span></h1>
+            </div>
+            <div style="padding:32px">
+              <h2 style="color:#1e3a5f">Welcome aboard! 🎉</h2>
+              <p>You're now subscribed to the PharmaNews Weekly Digest — trusted by 14,000+ healthcare professionals.</p>
+              <p>Every Monday at 8 AM IST you'll receive:</p>
+              <ul>
+                <li>Top 5 pharma news stories of the week</li>
+                <li>FDA approval updates</li>
+                <li>Clinical trial breakthroughs</li>
+                <li>AI in healthcare insights</li>
+              </ul>
+              <a href="https://pharmanews.onrender.com" style="background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;margin-top:16px">Visit PharmaNews →</a>
+            </div>
+            <div style="background:#f8fafc;padding:16px;text-align:center;font-size:12px;color:#6b7280">
+              © 2026 PharmaNews • AI-Powered Pharmaceutical Intelligence
+            </div>
+          </div>`
+        })
+      });
+    }
+    res.json({ success: true, message: "Subscribed successfully" });
+  } catch (error) {
+    res.json({ success: false, error: String(error) });
+  }
+});
+
+// Newsletter unsubscribe
+app.post("/api/newsletter/unsubscribe", async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.json({ success: false });
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    await supabase.from("subscribers").update({ active: false }).eq("email", email);
+    res.json({ success: true });
+  } catch (error) {
+    res.json({ success: false, error: String(error) });
+  }
+});
+
+// Get all articles from Supabase (real data)
+app.get("/api/articles", async (req, res) => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const { category, limit = 20, page = 1 } = req.query;
+    let query = supabase.from("articles").select("*").eq("published", true)
+      .order("created_at", { ascending: false })
+      .range((Number(page)-1)*Number(limit), Number(page)*Number(limit)-1);
+    if (category && category !== "All") query = query.eq("category", category);
+    const { data, count } = await query;
+    res.json({ articles: data || [], total: count, page: Number(page) });
+  } catch (error) {
+    res.json({ articles: [], error: String(error) });
+  }
+});
+
+// Get agent status + logs
+app.get("/api/agents/status", async (req, res) => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const yesterday = new Date(Date.now() - 24*60*60*1000).toISOString();
+    const { data: logs } = await supabase.from("agent_logs").select("*")
+      .gte("ran_at", yesterday).order("ran_at", { ascending: false });
+    const { count: totalArticles } = await supabase.from("articles")
+      .select("*", { count:"exact", head:true }).eq("published", true);
+    const { count: totalSubs } = await supabase.from("subscribers")
+      .select("*", { count:"exact", head:true }).eq("active", true);
+    const { count: socialPosts } = await supabase.from("social_posts")
+      .select("*", { count:"exact", head:true }).eq("status", "posted");
+    res.json({
+      agents: logs || [],
+      stats: { totalArticles, totalSubs, socialPosts },
+      system: "online",
+      lastUpdate: new Date().toISOString()
+    });
+  } catch (error) {
+    res.json({ agents: [], stats: {}, system: "error" });
+  }
+});
+
+// Get competitor insights
+app.get("/api/competitor-insights", async (req, res) => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const { data } = await supabase.from("competitor_data").select("*")
+      .neq("competitor_name", "STRATEGY_REPORT")
+      .order("analyzed_at", { ascending: false });
+    res.json({ competitors: data || [] });
+  } catch (error) {
+    res.json({ competitors: [] });
+  }
+});
+
+// Get SEO performance
+app.get("/api/seo/performance", async (req, res) => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const { data } = await supabase.from("seo_data").select("*")
+      .order("analyzed_at", { ascending: false }).limit(50);
+    const avgScore = data?.length ? Math.round(data.reduce((a,b) => a+(b.score||0), 0)/data.length) : 0;
+    res.json({ seoData: data || [], avgScore, totalOptimized: data?.length || 0 });
+  } catch (error) {
+    res.json({ seoData: [], avgScore: 0 });
+  }
+});
+
+// Social posts status
+app.get("/api/social/posts", async (req, res) => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const { data } = await supabase.from("social_posts").select("*, articles(title, category)")
+      .order("posted_at", { ascending: false }).limit(20);
+    res.json({ posts: data || [] });
+  } catch (error) {
+    res.json({ posts: [] });
+  }
+});
+
+// ============================================================
 // SEO ROUTES — Sitemap, Robots.txt, Google Verification
 // ============================================================
 
