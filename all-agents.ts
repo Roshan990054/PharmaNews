@@ -256,31 +256,167 @@ Write ONLY the post text, nothing else.`;
 }
 
 // ── PHASE 5: NEWSLETTER ────────────────────────────────────
+async function buildNewsletterHTML(articles: any[]): Promise<{subject: string, html: string}> {
+  const date = new Date().toLocaleDateString("en-IN", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
+  let intro = "Welcome to this week's most important pharmaceutical developments, curated and summarized by our AI agents.";
+  try {
+    const res = await getGemini().models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: `Write a 2-sentence engaging intro for a weekly pharma newsletter dated ${date}. Mention the top theme from these topics: ${articles.map(a=>a.category).join(", ")}. Be professional and exciting.`
+    });
+    intro = res.text?.trim() || intro;
+  } catch {}
+
+  const subject = `PharmaNews Weekly Digest — ${date} | ${articles.length} Top Stories`;
+
+  const articlesHTML = articles.map(a => `
+    <tr>
+      <td style="padding:20px 0;border-bottom:1px solid #e5e7eb">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td width="100" style="vertical-align:top;padding-right:16px">
+              <img src="${a.image_url || a.imageUrl || ''}" width="100" height="70" style="border-radius:8px;object-fit:cover;display:block" />
+            </td>
+            <td style="vertical-align:top">
+              <div style="background:#dbeafe;color:#1e40af;font-size:10px;font-weight:bold;padding:2px 8px;border-radius:4px;display:inline-block;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">${a.category}</div>
+              <h3 style="margin:0 0 6px;font-size:16px;color:#111827;line-height:1.4;font-family:Georgia,serif">${a.title}</h3>
+              <p style="margin:0 0 8px;font-size:13px;color:#6b7280;line-height:1.5">${(a.summary || '').substring(0,120)}...</p>
+              <div style="font-size:11px;color:#9ca3af">${a.author || 'PharmaNews Staff'} • ${a.date || ''} • ${a.readTime || '3 min read'}</div>
+              <a href="${SITE_URL}" style="color:#2563eb;font-size:12px;font-weight:bold;text-decoration:none;display:inline-block;margin-top:6px">Read Full Article →</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>`).join("");
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${subject}</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 0">
+  <tr><td align="center">
+    <table width="600" cellpadding="0" cellspacing="0" style="background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px rgba(0,0,0,0.07)">
+
+      <!-- Header -->
+      <tr><td style="background:linear-gradient(135deg,#1e3a5f,#1e40af);padding:28px 32px">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td><h1 style="margin:0;color:white;font-size:28px;font-family:Georgia,serif">💊 Pharma<span style="color:#60a5fa">NEWS</span></h1>
+            <p style="margin:4px 0 0;color:#93c5fd;font-size:11px;letter-spacing:2px;text-transform:uppercase;font-family:monospace">AI-Powered Pharmaceutical Intelligence</p></td>
+            <td align="right"><div style="background:rgba(255,255,255,0.15);border-radius:8px;padding:8px 14px;text-align:center">
+              <div style="color:#60a5fa;font-size:10px;font-family:monospace;text-transform:uppercase">Weekly Digest</div>
+              <div style="color:white;font-size:12px;font-weight:bold">${date}</div>
+            </div></td>
+          </tr>
+        </table>
+      </td></tr>
+
+      <!-- Breaking Banner -->
+      <tr><td style="background:#fef3c7;padding:12px 32px;border-bottom:2px solid #f59e0b">
+        <p style="margin:0;font-size:13px;color:#92400e">⚡ <strong>${articles.length} top pharma stories</strong> this week — FDA updates, clinical breakthroughs & biotech news</p>
+      </td></tr>
+
+      <!-- Intro -->
+      <tr><td style="padding:28px 32px 8px">
+        <p style="margin:0;font-size:15px;color:#374151;line-height:1.7">${intro}</p>
+      </td></tr>
+
+      <!-- Articles -->
+      <tr><td style="padding:8px 32px 24px">
+        <h2 style="font-size:14px;color:#6b7280;text-transform:uppercase;letter-spacing:2px;font-family:monospace;margin:0 0 16px;padding-bottom:8px;border-bottom:2px solid #2563eb">📰 Top Stories This Week</h2>
+        <table width="100%" cellpadding="0" cellspacing="0">${articlesHTML}</table>
+      </td></tr>
+
+      <!-- AI Agent Note -->
+      <tr><td style="padding:0 32px 24px">
+        <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:16px">
+          <p style="margin:0;font-size:12px;color:#166534">🤖 <strong>Powered by 7 AI Agents:</strong> This digest was automatically curated, written, and optimized by our AI system — News Collector → Article Writer → SEO Optimizer → Newsletter Generator. Running 24/7 at pharmanews.onrender.com</p>
+        </div>
+      </td></tr>
+
+      <!-- CTA -->
+      <tr><td style="padding:0 32px 28px;text-align:center">
+        <a href="${SITE_URL}" style="background:#2563eb;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:bold;font-size:14px;display:inline-block">Visit PharmaNews for More Stories →</a>
+      </td></tr>
+
+      <!-- Footer -->
+      <tr><td style="background:#111827;padding:20px 32px;text-align:center">
+        <p style="margin:0 0 8px;color:#9ca3af;font-size:12px">© 2026 PharmaNews • AI-Powered Pharmaceutical Intelligence Platform</p>
+        <p style="margin:0;font-size:11px;color:#6b7280">
+          <a href="${SITE_URL}" style="color:#60a5fa;text-decoration:none">Visit Website</a> •
+          <a href="${SITE_URL}/unsubscribe" style="color:#6b7280;text-decoration:none">Unsubscribe</a>
+        </p>
+        <div style="margin-top:12px;font-family:monospace;font-size:10px;color:#374151">
+          <span style="background:#1f2937;padding:3px 8px;border-radius:4px;color:#34d399">7 AGENTS ACTIVE</span>
+          <span style="background:#1f2937;padding:3px 8px;border-radius:4px;color:#60a5fa;margin:0 4px">GEMINI POWERED</span>
+          <span style="background:#1f2937;padding:3px 8px;border-radius:4px;color:#a78bfa">SSL SECURED</span>
+        </div>
+      </td></tr>
+
+    </table>
+  </td></tr>
+</table>
+</body>
+</html>`;
+
+  return { subject, html };
+}
+
 async function runPhase5(): Promise<number> {
   const isMonday = new Date(Date.now() + 5.5*3600000).getDay() === 1;
   if (!isMonday) { console.log("  ℹ️  Newsletter runs on Mondays only"); return 0; }
   console.log("📧 [Phase 5] Newsletter Generator starting...");
 
+  const resendKey = process.env.RESEND_API_KEY;
+  if (!resendKey) { console.log("  ⚠️  No RESEND_API_KEY — add it to Render environment"); return 0; }
+
+  // Get this week's top articles
   const weekAgo = new Date(Date.now() - 7*24*3600*1000).toISOString();
   const { data: articles } = await getSupabase().from("articles")
-    .select("*").gte("created_at", weekAgo).eq("published", true).limit(5);
-  const { data: subscribers } = await getSupabase().from("subscribers")
-    .select("email").eq("active", true);
+    .select("*").gte("created_at", weekAgo).eq("published", true)
+    .order("created_at", { ascending: false }).limit(6);
 
-  if (!articles?.length || !subscribers?.length) {
-    console.log("  ℹ️  No articles or subscribers"); return 0;
+  if (!articles?.length) { console.log("  ℹ️  No articles this week"); return 0; }
+
+  // Get active subscribers
+  const { data: subscribers } = await getSupabase().from("subscribers")
+    .select("email, name").eq("active", true);
+
+  if (!subscribers?.length) { console.log("  ℹ️  No subscribers yet"); return 0; }
+
+  // Build newsletter HTML
+  console.log(`  📝 Building newsletter for ${subscribers.length} subscribers...`);
+  const { subject, html } = await buildNewsletterHTML(articles);
+
+  // Send to all subscribers via Resend
+  let sent = 0;
+  for (const sub of subscribers) {
+    try {
+      const res = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "PharmaNews <newsletter@pharmanews.onrender.com>",
+          to: sub.email,
+          subject,
+          html
+        })
+      });
+      if (res.ok) { sent++; console.log(`  ✅ Sent to ${sub.email}`); }
+    } catch (e) { console.error(`  ❌ Failed to send to ${sub.email}:`, e); }
+    await new Promise(r => setTimeout(r, 200)); // Rate limit
   }
 
+  // Save newsletter record
   await getSupabase().from("newsletters").insert({
-    subject: `PharmaNews Weekly Digest — ${new Date().toLocaleDateString("en-IN")}`,
-    content: `Weekly digest with ${articles.length} articles`,
-    recipients_count: subscribers.length,
+    subject, content: html,
+    recipients_count: sent,
     sent_at: new Date().toISOString()
   });
 
-  await logAgent("Phase5-Newsletter", "success", `Newsletter prepared for ${subscribers.length} subscribers`, articles.length);
-  console.log(`✅ [Phase 5] Done — Newsletter prepared for ${subscribers.length} subscribers`);
-  return subscribers.length;
+  await logAgent("Phase5-Newsletter", "success", `Sent newsletter to ${sent}/${subscribers.length} subscribers`, articles.length);
+  console.log(`✅ [Phase 5] Done — Newsletter sent to ${sent} subscribers!`);
+  return sent;
 }
 
 // ── PHASE 6: COMPETITOR INTEL ──────────────────────────────
