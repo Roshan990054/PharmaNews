@@ -1267,6 +1267,174 @@ app.get("/google-site-verification:code", (req, res) => {
   res.send(`google-site-verification: ${code}`);
 });
 
+// Article Schema — NewsArticle JSON-LD for each article
+app.get("/api/article-schema/:id", async (req, res) => {
+  const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const { data: article } = await supabase.from("articles")
+      .select("*").eq("id", req.params.id).single();
+    if (!article) return res.status(404).json({ error: "Not found" });
+
+    const schema = {
+      "@context": "https://schema.org",
+      "@type": "NewsArticle",
+      "headline": article.seo_title || article.title,
+      "description": article.seo_description || article.summary,
+      "image": article.image_url,
+      "datePublished": article.created_at,
+      "dateModified": article.created_at,
+      "author": {
+        "@type": "Person",
+        "name": article.author || "PharmaNews Staff"
+      },
+      "publisher": {
+        "@type": "NewsMediaOrganization",
+        "name": "PharmaNews",
+        "logo": { "@type": "ImageObject", "url": `${SITE_URL}/logo.png` },
+        "url": SITE_URL
+      },
+      "mainEntityOfPage": {
+        "@type": "WebPage",
+        "@id": `${SITE_URL}/#article/${article.id}`
+      },
+      "articleSection": article.category,
+      "keywords": article.keywords || article.category,
+      "url": `${SITE_URL}/#article/${article.id}`,
+      "canonicalUrl": `${SITE_URL}/#article/${article.id}`
+    };
+    res.json(schema);
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+// Open Graph Image Generator for articles
+app.get("/api/og-image/:id", async (req, res) => {
+  const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const { data: article } = await supabase.from("articles")
+      .select("title, category, image_url, author").eq("id", req.params.id).single();
+    if (!article) return res.status(404).send("Not found");
+
+    // Generate SVG OG image
+    const title = (article.title || "").substring(0, 80);
+    const category = article.category || "Pharma News";
+    const svg = `<svg width="1200" height="630" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" style="stop-color:#1e3a5f;stop-opacity:1" />
+          <stop offset="100%" style="stop-color:#1e40af;stop-opacity:1" />
+        </linearGradient>
+      </defs>
+      <rect width="1200" height="630" fill="url(#bg)" />
+      <rect x="0" y="0" width="8" height="630" fill="#60a5fa" />
+      <text x="60" y="80" font-family="Arial" font-size="20" fill="#60a5fa" font-weight="bold" text-transform="uppercase">${category.toUpperCase()}</text>
+      <foreignObject x="60" y="120" width="1080" height="280">
+        <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Arial;font-size:52px;font-weight:bold;color:white;line-height:1.3">${title}</div>
+      </foreignObject>
+      <text x="60" y="550" font-family="Arial" font-size="24" fill="#93c5fd">By ${article.author || "PharmaNews Staff"}</text>
+      <text x="60" y="590" font-family="Arial" font-size="20" fill="#64748b">pharmanews.onrender.com</text>
+      <text x="1140" y="590" font-family="Arial" font-size="36" fill="#1d4ed8" text-anchor="end">💊</text>
+    </svg>`;
+
+    res.setHeader("Content-Type", "image/svg+xml");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    res.send(svg);
+  } catch (e) { res.status(500).send("Error"); }
+});
+
+// Google News Sitemap
+app.get("/news-sitemap.xml", async (req, res) => {
+  const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+  let newsItems = "";
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const twoDaysAgo = new Date(Date.now() - 2*24*60*60*1000).toISOString();
+    const { data: articles } = await supabase.from("articles")
+      .select("id, title, created_at, category, source")
+      .eq("published", true).gte("created_at", twoDaysAgo)
+      .order("created_at", { ascending: false }).limit(50);
+    newsItems = (articles || []).map(a => `
+  <url>
+    <loc>${SITE_URL}/article/${a.id}</loc>
+    <news:news>
+      <news:publication>
+        <news:name>PharmaNews</news:name>
+        <news:language>en</news:language>
+      </news:publication>
+      <news:publication_date>${new Date(a.created_at).toISOString()}</news:publication_date>
+      <news:title>${a.title?.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</news:title>
+      <news:keywords>${a.category}, pharmaceutical, healthcare</news:keywords>
+    </news:news>
+  </url>`).join("");
+  } catch {}
+  res.setHeader("Content-Type", "application/xml");
+  res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">
+  ${newsItems}
+</urlset>`);
+});
+
+// Serve manifest.json
+app.get("/manifest.json", (req, res) => {
+  res.json({
+    name: "PharmaNews — Pharmaceutical Intelligence",
+    short_name: "PharmaNews",
+    description: "AI-powered pharmaceutical news platform",
+    start_url: "/",
+    display: "standalone",
+    background_color: "#060d1a",
+    theme_color: "#2563eb",
+    icons: [
+      { src: "https://images.unsplash.com/photo-1576086213369-97a306d36557?w=192&h=192&fit=crop", sizes: "192x192", type: "image/png" },
+      { src: "https://images.unsplash.com/photo-1576086213369-97a306d36557?w=512&h=512&fit=crop", sizes: "512x512", type: "image/png" }
+    ],
+    categories: ["news", "medical", "health"]
+  });
+});
+
+// Admin stats endpoint
+app.get("/api/admin/stats", async (req, res) => {
+  try {
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+    const [articles, subscribers, social, newsletters, seo, logs] = await Promise.all([
+      supabase.from("articles").select("*", { count:"exact", head:true }).eq("published", true),
+      supabase.from("subscribers").select("*", { count:"exact", head:true }).eq("active", true),
+      supabase.from("social_posts").select("*", { count:"exact", head:true }).eq("status", "posted"),
+      supabase.from("newsletters").select("recipients_count").order("sent_at", { ascending:false }).limit(1),
+      supabase.from("seo_data").select("score").order("analyzed_at", { ascending:false }).limit(50),
+      supabase.from("agent_logs").select("*").order("ran_at", { ascending:false }).limit(20)
+    ]);
+    const avgSEO = seo.data?.length ? Math.round(seo.data.reduce((a:number,b:any)=>a+(b.score||0),0)/seo.data.length) : 0;
+    res.json({
+      articles: articles.count || 0,
+      subscribers: subscribers.count || 0,
+      socialPosts: social.count || 0,
+      newsletterReach: newsletters.data?.[0]?.recipients_count || 0,
+      avgSeoScore: avgSEO,
+      agentLogs: logs.data || [],
+      lastUpdated: new Date().toISOString()
+    });
+  } catch (e) { res.json({ error: String(e) }); }
+});
+
 // Vite middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
