@@ -111,11 +111,15 @@ Write ONLY the article content, professional tone, 4 paragraphs.`;
   return count;
 }
 
-// ── PHASE 3: SEO OPTIMIZER ─────────────────────────────────
+// ── PHASE 3: SEO OPTIMIZER + INTERNAL LINKER ───────────────
 async function runPhase3(): Promise<number> {
-  console.log("🔍 [Phase 3] SEO Optimizer starting...");
+  console.log("🔍 [Phase 3] SEO Optimizer + Internal Linker starting...");
   const { data: articles } = await getSupabase().from("articles").select("*").is("seo_title", null).limit(10);
   if (!articles?.length) { console.log("  ℹ️  All articles SEO optimized"); return 0; }
+
+  // Get all published articles for internal linking
+  const { data: allArticles } = await getSupabase().from("articles")
+    .select("id, title, category, keywords").eq("published", true).limit(100);
 
   let count = 0;
   for (const article of articles) {
@@ -128,9 +132,27 @@ Article: ${article.title} — ${article.category}`;
         config: { responseMimeType: "application/json" }
       });
       const seo = JSON.parse(res.text?.replace(/```json|```/g, "").trim() || "{}");
+
+      // #18 — Internal linking: find related articles and add links to content
+      const related = (allArticles || [])
+        .filter(a => a.id !== article.id && a.category === article.category)
+        .slice(0, 3);
+
+      let enrichedContent = article.content || "";
+      if (related.length > 0 && enrichedContent.length > 200) {
+        const relatedLinks = related.map(r =>
+          `• <a href="/#article/${r.id}">${r.title}</a>`
+        ).join("\n");
+        enrichedContent += `\n\n**Related Articles:**\n${relatedLinks}`;
+      }
+
       await getSupabase().from("articles").update({
-        seo_title: seo.seo_title, seo_description: seo.meta_description, keywords: seo.keywords
+        seo_title: seo.seo_title,
+        seo_description: seo.meta_description,
+        keywords: seo.keywords,
+        content: enrichedContent
       }).eq("id", article.id);
+
       await getSupabase().from("seo_data").insert({
         article_id: article.id, meta_title: seo.seo_title,
         meta_description: seo.meta_description, keywords: seo.keywords,
@@ -140,10 +162,147 @@ Article: ${article.title} — ${article.category}`;
     } catch (e) { console.error("  SEO error:", e); }
     await new Promise(r => setTimeout(r, 1500));
   }
-  await logAgent("Phase3-SEOOptimizer", "success", `SEO optimized ${count} articles`, count);
-  console.log(`✅ [Phase 3] Done — ${count} articles SEO optimized`);
+  await logAgent("Phase3-SEOOptimizer", "success", `SEO optimized + linked ${count} articles`, count);
+  console.log(`✅ [Phase 3] Done — ${count} articles SEO optimized with internal links`);
   return count;
 }
+
+// ── PHASE 7: FACT CHECK AGENT ──────────────────────────────
+async function runPhase7(): Promise<number> {
+  console.log("✅ [Phase 7] Fact Check Agent starting...");
+  const { data: articles } = await getSupabase().from("articles")
+    .select("*").eq("published", true)
+    .gte("created_at", new Date(Date.now() - 24*3600*1000).toISOString())
+    .limit(10);
+
+  if (!articles?.length) { console.log("  ℹ️  No new articles to fact-check"); return 0; }
+
+  let flagged = 0;
+  for (const article of articles) {
+    try {
+      const prompt = `You are a pharmaceutical fact-checker. Review this article for accuracy.
+
+Title: ${article.title}
+Content: ${article.content?.substring(0, 400)}
+Category: ${article.category}
+
+Check for:
+1. Unverified drug claims
+2. Incorrect dosage information
+3. Misleading statistics
+4. Hallucinated clinical data
+5. Dangerous medical advice
+
+Respond ONLY in JSON:
+{
+  "is_accurate": true/false,
+  "confidence": 85,
+  "flags": ["issue1", "issue2"],
+  "verdict": "PASS/WARN/FAIL",
+  "recommendation": "brief action"
+}`;
+
+      const res = await getGemini().models.generateContent({
+        model: "gemini-2.0-flash", contents: prompt,
+        config: { responseMimeType: "application/json" }
+      });
+      const result = JSON.parse(res.text?.replace(/```json|```/g, "").trim() || "{}");
+
+      if (result.verdict === "FAIL") {
+        // Unpublish dangerous content
+        await getSupabase().from("articles").update({ published: false }).eq("id", article.id);
+        flagged++;
+        console.log(`  ❌ UNPUBLISHED (FAIL): ${article.title?.substring(0, 50)}`);
+      } else if (result.verdict === "WARN") {
+        flagged++;
+        console.log(`  ⚠️  WARNING: ${article.title?.substring(0, 50)} — ${result.flags?.join(", ")}`);
+      } else {
+        console.log(`  ✅ PASS: ${article.title?.substring(0, 50)}`);
+      }
+    } catch (e) { console.error("  Fact-check error:", e); }
+    await new Promise(r => setTimeout(r, 1000));
+  }
+
+  await logAgent("Phase7-FactCheck", "success",
+    `Fact-checked ${articles.length} articles, ${flagged} flagged`, articles.length);
+  console.log(`✅ [Phase 7] Done — ${articles.length} checked, ${flagged} flagged`);
+  return flagged;
+}
+
+// ── PHASE 8: TRENDING TOPICS AGENT ────────────────────────
+async function runPhase8(): Promise<number> {
+  console.log("📈 [Phase 8] Trending Topics Agent starting...");
+  try {
+    // Use Gemini to identify trending pharma topics
+    const prompt = `You are a pharmaceutical trend analyst. Today is ${new Date().toLocaleDateString("en-IN")}.
+
+Identify the top 10 trending pharmaceutical topics RIGHT NOW that people are searching for.
+Focus on: breaking FDA news, viral drug stories, major clinical trial results, biotech IPOs.
+
+Respond ONLY in JSON:
+{
+  "trending": [
+    {"topic": "topic name", "search_query": "newsapi search query", "category": "Drug Approvals", "priority": 9},
+    {"topic": "topic name", "search_query": "newsapi search query", "category": "Clinical Trials", "priority": 8}
+  ]
+}`;
+
+    const res = await getGemini().models.generateContent({
+      model: "gemini-2.0-flash", contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+    const data = JSON.parse(res.text?.replace(/```json|```/g, "").trim() || "{}");
+    const trending = data.trending || [];
+
+    if (!trending.length) return 0;
+
+    console.log(`  📊 Found ${trending.length} trending topics`);
+
+    // Fetch news for top 5 trending topics
+    const apiKey = process.env.NEWS_API_KEY;
+    if (!apiKey) { console.log("  ⚠️  No NEWS_API_KEY"); return 0; }
+
+    let saved = 0;
+    for (const trend of trending.slice(0, 5)) {
+      try {
+        const url = `https://newsapi.org/v2/everything?q=${encodeURIComponent(trend.search_query)}&language=en&sortBy=publishedAt&pageSize=2&apiKey=${apiKey}`;
+        const newsRes = await fetch(url);
+        const newsData = await newsRes.json();
+
+        for (const raw of newsData.articles || []) {
+          if (!raw.title || raw.title === "[Removed]") continue;
+          const { data: existing } = await getSupabase().from("articles")
+            .select("id").ilike("title", `%${raw.title.substring(0, 40)}%`).limit(1);
+          if (existing?.length) continue;
+
+          await getSupabase().from("articles").insert({
+            title: raw.title,
+            content: raw.content || raw.description || "",
+            summary: raw.description || "",
+            category: trend.category,
+            source: raw.source?.name || "PharmaNews",
+            author: raw.author || "PharmaNews Staff",
+            image_url: raw.urlToImage || `https://images.unsplash.com/photo-1576086213369-97a306d36557?w=800`,
+            published: true,
+            created_at: new Date().toISOString()
+          });
+          saved++;
+        }
+      } catch (e) { console.error(`  Error fetching trend ${trend.topic}:`, e); }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    await logAgent("Phase8-TrendingTopics", "success",
+      `Found ${trending.length} trends, saved ${saved} articles`, saved);
+    console.log(`✅ [Phase 8] Done — ${saved} trending articles saved`);
+    return saved;
+  } catch (e) {
+    console.error("  Trending error:", e);
+    return 0;
+  }
+}
+
+
 
 // ── PHASE 4: SOCIAL PUBLISHER ──────────────────────────────
 // ── Buffer API Helper ──────────────────────────────────────
@@ -517,10 +676,12 @@ export function startAllAgents(): void {
   schedule("Phase4",     7,  0, runPhase4);
   schedule("Phase5",     8,  0, runPhase5);
   schedule("Phase6",     9,  0, runPhase6);
+  schedule("Phase7",     6, 30, runPhase7); // Fact check after article writer
+  schedule("Phase8",     4, 30, runPhase8); // Trending topics before news collector
 
   // Also run Phase 1 immediately to fetch news
   setTimeout(() => runPhase1().catch(console.error), 5000);
 
-  console.log("📅 Schedule (IST): 4AM→CEO  5AM→News  5:30AM→Writer  6AM→SEO  7AM→Social  8AM→Newsletter(Mon)  9AM→Competitor(Sun)");
-  console.log("✅ All agents running!");
+  console.log("📅 Schedule (IST): 4AM→CEO  4:30AM→Trending  5AM→News  5:30AM→Writer  6AM→SEO  6:30AM→FactCheck  7AM→Social  8AM→Newsletter(Mon)  9AM→Competitor(Sun)");
+  console.log("✅ All 9 agents running!");
 }
