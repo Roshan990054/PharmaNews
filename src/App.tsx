@@ -6,7 +6,8 @@ import {
   Linkedin, Instagram, Sun, Moon, RefreshCw, Bell,
   ArrowUpRight, ArrowDownRight, Shield, Terminal, Check,
   Zap, Tag, Rss, Home, BarChart2, FlaskConical, ChevronRight,
-  Bookmark, Copy, AlertCircle, Globe, Activity
+  Bookmark, Copy, AlertCircle, Globe, Activity, Printer,
+  Filter, SlidersHorizontal, TrendingDown, Hash
 } from "lucide-react";
 import CapsuleLogo from "./CapsuleLogo";
 
@@ -36,14 +37,15 @@ const STOCKS: Stock[] = [
 ];
 
 const NAV_ITEMS = [
-  { label:"Home",         id:"home"      },
+  { label:"Home",           id:"home"       },
   { label:"Drug Approvals", id:"drug-approvals" },
-  { label:"Clinical Trials", id:"clinical-trials" },
+  { label:"Clinical Trials",id:"clinical-trials"},
   { label:"Biotechnology",  id:"biotechnology"  },
-  { label:"AI in Healthcare", id:"ai-healthcare" },
+  { label:"AI in Healthcare",id:"ai-healthcare" },
   { label:"Industry News",  id:"industry"   },
   { label:"AI Lab",         id:"ai-lab"     },
   { label:"Dashboard",      id:"dashboard"  },
+  { label:"⚙️ Admin",       id:"admin"      },
 ];
 
 const CATEGORIES = [
@@ -75,8 +77,23 @@ const TRENDING = [
 
 // ─── MAIN APP ─────────────────────────────────────────────────
 export default function App() {
-  const [theme, setTheme] = useState<"dark"|"light">("dark");
-  const [page, setPage] = useState("home");
+  // #4 — Dark/Light mode memory (localStorage)
+  const [theme, setTheme] = useState<"dark"|"light">(() => {
+    try { return (localStorage.getItem("pharmanews-theme") as "dark"|"light") || "dark"; }
+    catch { return "dark"; }
+  });
+  const [page, setPage] = useState(() => {
+    // #3 — URL routing via hash
+    const hash = window.location.hash.replace("#","");
+    if (hash.startsWith("article/")) return "article";
+    if (hash && hash !== "") return hash;
+    return "home";
+  });
+  const [urlArticleId, setUrlArticleId] = useState(() => {
+    const hash = window.location.hash.replace("#","");
+    if (hash.startsWith("article/")) return hash.replace("article/","");
+    return "";
+  });
   const [articles, setArticles] = useState<Article[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedArticle, setSelectedArticle] = useState<Article|null>(null);
@@ -100,13 +117,53 @@ export default function App() {
   const [bookmarks, setBookmarks] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [copied, setCopied] = useState(false);
+  const [adminStats, setAdminStats] = useState<any>(null);
+  const [adminLoading, setAdminLoading] = useState(false);
+  // #8 — Reading progress bar
+  const [readProgress, setReadProgress] = useState(0);
+  // #5 — Search filters
+  const [searchFilter, setSearchFilter] = useState("All");
+  const [searchSort, setSearchSort] = useState<"recent"|"relevant">("recent");
+  // #2 — Mobile menu search
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const PER_PAGE = 8;
 
-  // Theme
+  // #4 — Save theme to localStorage
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
+    try { localStorage.setItem("pharmanews-theme", theme); } catch {}
   }, [theme]);
+
+  // #3 — URL hash routing sync
+  useEffect(() => {
+    const handleHash = () => {
+      const hash = window.location.hash.replace("#","");
+      if (hash.startsWith("article/")) {
+        setUrlArticleId(hash.replace("article/",""));
+        setPage("article");
+      } else if (hash) {
+        setPage(hash);
+      }
+    };
+    window.addEventListener("hashchange", handleHash);
+    return () => window.removeEventListener("hashchange", handleHash);
+  }, []);
+
+  // Navigate with URL update
+  const navigate = useCallback((newPage: string, extra = "") => {
+    setPage(newPage);
+    window.location.hash = extra || newPage;
+  }, []);
+
+  const openArticle = useCallback((article: Article) => {
+    setSelectedArticle(article);
+    setArticleView("full");
+    setAiSummary("");
+    setReadProgress(0);
+    window.location.hash = `article/${article.id}`;
+    window.scrollTo(0, 0);
+  }, []);
 
   // Fetch articles
   const fetchArticles = useCallback(async (cat = activeCategory, q = "") => {
@@ -125,6 +182,48 @@ export default function App() {
 
   useEffect(() => { fetchArticles(activeCategory); }, [activeCategory]);
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [chatMsgs]);
+
+  // #8 — Reading progress bar scroll listener
+  useEffect(() => {
+    if (!selectedArticle) return;
+    const handleScroll = () => {
+      const el = document.documentElement;
+      const scrollTop = el.scrollTop || document.body.scrollTop;
+      const scrollHeight = el.scrollHeight - el.clientHeight;
+      const progress = scrollHeight > 0 ? Math.round((scrollTop / scrollHeight) * 100) : 0;
+      setReadProgress(Math.min(100, progress));
+    };
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [selectedArticle]);
+
+  // Load article from URL on mount
+  useEffect(() => {
+    if (urlArticleId && articles.length > 0) {
+      const found = articles.find(a => a.id === urlArticleId);
+      if (found) { setSelectedArticle(found); setPage("article"); }
+    }
+  }, [urlArticleId, articles]);
+
+  // Load admin stats
+  useEffect(() => {
+    if (page === "admin" && !adminStats) {
+      setAdminLoading(true);
+      fetch("/api/admin/stats").then(r => r.json()).then(d => { setAdminStats(d); setAdminLoading(false); }).catch(() => setAdminLoading(false));
+    }
+  }, [page]);
+
+  // #5 — Search with filters
+  const getFilteredSearch = () => {
+    let results = articles.filter(a =>
+      a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      a.summary?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      a.category?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+    if (searchFilter !== "All") results = results.filter(a => a.category === searchFilter);
+    if (searchSort === "recent") results.sort((a,b) => b.date.localeCompare(a.date));
+    return results;
+  };
 
   // AI Chat
   const sendChat = async () => {
@@ -214,10 +313,23 @@ export default function App() {
   if (selectedArticle) return (
     <div className={theme === "dark" ? "dark" : ""}>
       <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+        {/* #8 — Reading Progress Bar */}
+        <div className="fixed top-0 left-0 z-[60] h-1 bg-blue-600 transition-all duration-150" style={{width:`${readProgress}%`}} />
+
+        {/* #9 — Print styles */}
+        <style>{`
+          @media print {
+            header, .no-print { display: none !important; }
+            body { background: white !important; color: black !important; }
+            img { max-width: 100%; }
+            a { color: black; text-decoration: underline; }
+          }
+        `}</style>
+
         {/* Article Header */}
         <div className="sticky top-0 z-50 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800">
           <div className="max-w-screen-xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
-            <button onClick={() => { setSelectedArticle(null); setAiSummary(""); }}
+            <button onClick={() => { setSelectedArticle(null); setAiSummary(""); setReadProgress(0); window.location.hash = page; }}
               className="flex items-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
               <ChevronLeft className="w-4 h-4" /> Back to PharmaNews
             </button>
@@ -232,9 +344,16 @@ export default function App() {
               </button>
             </div>
             <div className="flex items-center gap-2">
+              {/* Reading progress text */}
+              <span className="text-xs font-mono text-slate-400 hidden md:block">{readProgress}% read</span>
               <button onClick={() => setBookmarks(p => p.includes(selectedArticle.id) ? p.filter(b => b !== selectedArticle.id) : [...p, selectedArticle.id])}
                 className={`p-2 rounded-full transition-colors ${bookmarks.includes(selectedArticle.id) ? "text-blue-600 bg-blue-50 dark:bg-blue-900/20" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`}>
                 <Bookmark className="w-4 h-4" fill={bookmarks.includes(selectedArticle.id) ? "currentColor" : "none"} />
+              </button>
+              {/* #9 — Print button */}
+              <button onClick={() => window.print()}
+                className="p-2 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden md:block no-print">
+                <Printer className="w-4 h-4" />
               </button>
               <button onClick={() => handleShare(selectedArticle)}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
@@ -317,6 +436,25 @@ export default function App() {
 
           {/* Sidebar */}
           <aside className="space-y-6">
+            {/* #7 — Related Articles */}
+            <div className="bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-5">
+              <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
+                <Hash className="w-4 h-4 text-blue-600" /> Related Articles
+              </h3>
+              <div className="space-y-4">
+                {articles.filter(a => a.id !== selectedArticle.id && a.category === selectedArticle.category).slice(0,3).map(a => (
+                  <div key={a.id} onClick={() => openArticle(a)} className="flex gap-3 cursor-pointer group">
+                    <img src={a.imageUrl} alt="" loading="lazy" className="w-16 h-12 object-cover rounded-lg flex-none" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 leading-snug line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{a.title}</p>
+                      <p className="text-[10px] text-slate-400 mt-0.5">{a.readTime}</p>
+                    </div>
+                  </div>
+                ))}
+                {articles.filter(a => a.id !== selectedArticle.id && a.category === selectedArticle.category).length === 0 && <p className="text-xs text-slate-400 italic">No related articles yet.</p>}
+              </div>
+            </div>
+
             {/* Latest Articles */}
             <div className="bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-5">
               <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2 text-sm uppercase tracking-wider">
@@ -324,9 +462,9 @@ export default function App() {
               </h3>
               <div className="space-y-4">
                 {latest.filter(a => a.id !== selectedArticle.id).slice(0,4).map(a => (
-                  <div key={a.id} onClick={() => { setSelectedArticle(a); setArticleView("full"); setAiSummary(""); window.scrollTo(0,0); }}
+                  <div key={a.id} onClick={() => openArticle(a)}
                     className="flex gap-3 cursor-pointer group">
-                    <img src={a.imageUrl} alt="" className="w-16 h-12 object-cover rounded-lg flex-none" />
+                    <img src={a.imageUrl} alt="" loading="lazy" className="w-16 h-12 object-cover rounded-lg flex-none" />
                     <div className="flex-1 min-w-0">
                       <span className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${CAT_COLORS[a.category] || "bg-slate-100 text-slate-600"}`}>{a.category}</span>
                       <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 mt-1 leading-snug line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{a.title}</p>
@@ -409,7 +547,8 @@ export default function App() {
                   placeholder="Search pharma news, drugs, trials..."
                   className="bg-transparent flex-1 text-sm outline-none text-slate-900 dark:text-white placeholder-slate-400" />
                 <button onClick={() => fetchArticles(activeCategory, searchQuery)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-bold transition-colors">
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-bold transition-colors"
+                  onKeyDown={e => e.key === "Enter" && navigate("search")}>
                   Search
                 </button>
               </div>
@@ -487,6 +626,31 @@ export default function App() {
           </div>
         )}
 
+        {/* #2 — Mobile Search Bar */}
+        <div className="md:hidden bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2">
+          <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 rounded-lg px-3 py-2">
+            <Search className="w-4 h-4 text-slate-400 flex-none" />
+            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={e => { if(e.key==="Enter" && searchQuery) navigate("search"); }}
+              placeholder="Search pharma news..."
+              className="bg-transparent flex-1 text-sm outline-none text-slate-900 dark:text-white placeholder-slate-400" />
+            {searchQuery && <button onClick={() => setSearchQuery("")}><X className="w-3.5 h-3.5 text-slate-400" /></button>}
+          </div>
+        </div>
+
+        {/* #17 — Breadcrumb Navigation */}
+        {page !== "home" && (
+          <div className="bg-slate-100 dark:bg-slate-900/40 border-b border-slate-200 dark:border-slate-800 py-2 px-4">
+            <div className="max-w-screen-xl mx-auto flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <button onClick={() => navigate("home")} className="hover:text-blue-600 transition-colors flex items-center gap-1">
+                <Home className="w-3 h-3" /> Home
+              </button>
+              <ChevronRight className="w-3 h-3" />
+              <span className="text-slate-700 dark:text-slate-300 font-medium capitalize">{page.replace("-"," ")}</span>
+            </div>
+          </div>
+        )}
+
         {/* ── MAIN CONTENT ── */}
         <main className="max-w-screen-xl mx-auto px-4 lg:px-6 py-8">
 
@@ -514,7 +678,7 @@ export default function App() {
 
                 {/* Featured Article */}
                 {featured && !loading && (
-                  <div onClick={() => { setSelectedArticle(featured); setArticleView("full"); setAiSummary(""); window.scrollTo(0,0); }}
+                  <div onClick={() => openArticle(featured)}
                     className="group relative bg-white dark:bg-slate-900/60 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 shadow-sm hover:shadow-lg transition-all cursor-pointer">
                     <div className="grid grid-cols-1 md:grid-cols-2">
                       <div className="relative h-64 md:h-auto">
@@ -604,10 +768,10 @@ export default function App() {
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                         {paginated.map(article => (
-                          <div key={article.id} onClick={() => { setSelectedArticle(article); setArticleView("full"); setAiSummary(""); window.scrollTo(0,0); }}
+                          <div key={article.id} onClick={() => openArticle(article)}
                             className="group bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-lg transition-all cursor-pointer overflow-hidden">
                             <div className="relative h-44 overflow-hidden">
-                              <img src={article.imageUrl} alt={article.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                              <img src={article.imageUrl} alt={article.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                               <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
                               <span className={`absolute top-3 left-3 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${CAT_COLORS[article.category] || "bg-slate-100 text-slate-700"}`}>
                                 {article.category}
@@ -752,6 +916,215 @@ export default function App() {
             </div>
           )}
 
+          {/* ═══ CATEGORY DEDICATED PAGES ═══ */}
+          {["drug-approvals","clinical-trials","biotechnology","ai-healthcare","industry"].includes(page) && (() => {
+            const catMap: Record<string,string> = {
+              "drug-approvals": "Drug Approvals",
+              "clinical-trials": "Clinical Trials",
+              "biotechnology": "Biotechnology",
+              "ai-healthcare": "AI in Healthcare",
+              "industry": "Industry News"
+            };
+            const catName = catMap[page] || "All";
+            const catArticles = articles.filter(a => a.category === catName);
+            const catIcons: Record<string,string> = {
+              "Drug Approvals": "💊", "Clinical Trials": "🧪",
+              "Biotechnology": "🔬", "AI in Healthcare": "🤖", "Industry News": "📈"
+            };
+            const catDesc: Record<string,string> = {
+              "Drug Approvals": "Latest FDA drug approvals, accelerated pathways, and regulatory decisions affecting the pharmaceutical industry.",
+              "Clinical Trials": "Breaking results from Phase I, II, III clinical trials across oncology, cardiology, neurology, and more.",
+              "Biotechnology": "Cutting-edge biotech innovations, gene therapy breakthroughs, CRISPR advances, and biosimilar developments.",
+              "AI in Healthcare": "How artificial intelligence, machine learning, and digital health tools are transforming pharmaceutical research and patient care.",
+              "Industry News": "Mergers, acquisitions, earnings, executive moves, and strategic developments across the global pharma industry."
+            };
+            return (
+              <div className="space-y-8">
+                {/* Category Hero */}
+                <div className={`rounded-2xl p-8 border ${CAT_COLORS[catName] || "bg-slate-100 border-slate-200"}`}>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="text-4xl mb-3">{catIcons[catName]}</div>
+                      <h1 className="text-3xl font-black mb-2">{catName}</h1>
+                      <p className="text-sm opacity-80 max-w-xl">{catDesc[catName]}</p>
+                    </div>
+                    <div className="text-right hidden md:block">
+                      <div className="text-4xl font-black">{catArticles.length}</div>
+                      <div className="text-sm opacity-70">Articles</div>
+                    </div>
+                  </div>
+                  {/* Sub-category pills */}
+                  <div className="flex flex-wrap gap-2 mt-5">
+                    {catArticles.slice(0,5).map(a => a.source).filter((v,i,s)=>s.indexOf(v)===i).map(src => (
+                      <span key={src} className="px-3 py-1 bg-white/40 dark:bg-black/20 rounded-full text-xs font-medium">{src}</span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Featured in category */}
+                {catArticles[0] && (
+                  <div onClick={() => openArticle(catArticles[0])}
+                    className="group grid grid-cols-1 md:grid-cols-2 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 overflow-hidden cursor-pointer shadow-sm hover:shadow-lg transition-all">
+                    <img src={catArticles[0].imageUrl} alt={catArticles[0].title} loading="lazy" className="w-full h-64 object-cover" />
+                    <div className="p-6 flex flex-col justify-between">
+                      <div>
+                        <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Featured Story</span>
+                        <h2 className="text-2xl font-bold mt-2 mb-3 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors leading-snug">{catArticles[0].title}</h2>
+                        <p className="text-slate-500 dark:text-slate-400 text-sm line-clamp-3">{catArticles[0].summary}</p>
+                      </div>
+                      <div className="flex items-center justify-between mt-4 text-xs text-slate-400">
+                        <span>{catArticles[0].author}</span>
+                        <span className="flex items-center gap-2">{catArticles[0].date} • {catArticles[0].readTime}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Article grid */}
+                <div>
+                  <h2 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                    <Newspaper className="w-5 h-5 text-blue-600" /> All {catName} Articles
+                    <span className="text-sm font-normal text-slate-500">({catArticles.length})</span>
+                  </h2>
+                  {catArticles.length === 0 ? (
+                    <div className="text-center py-16 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                      <div className="text-4xl mb-3">{catIcons[catName]}</div>
+                      <p className="text-slate-500">No articles yet in {catName}.</p>
+                      <p className="text-xs text-slate-400 mt-1">Our AI agents collect news daily at 5 AM IST.</p>
+                      <button onClick={triggerAgent} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                        Trigger AI Update Now
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                      {catArticles.slice(1).map(article => (
+                        <div key={article.id} onClick={() => openArticle(article)}
+                          className="group bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-lg transition-all cursor-pointer overflow-hidden">
+                          <div className="relative h-40 overflow-hidden">
+                            <img src={article.imageUrl} alt={article.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent" />
+                          </div>
+                          <div className="p-4">
+                            <h3 className="font-bold text-slate-900 dark:text-white leading-snug mb-2 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors line-clamp-2">{article.title}</h3>
+                            <p className="text-slate-500 dark:text-slate-400 text-xs line-clamp-2 mb-3">{article.summary}</p>
+                            <div className="flex items-center justify-between text-xs text-slate-400">
+                              <span>{article.source}</span>
+                              <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{article.readTime}</span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ═══ SEARCH RESULTS PAGE ═══ */}
+          {page === "search" && (
+            <div className="space-y-6">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Search className="w-5 h-5 text-blue-600" />
+                  {searchQuery ? `Results for "${searchQuery}"` : "Search PharmaNews"}
+                </h2>
+                {searchQuery && <span className="text-sm text-slate-500">({getFilteredSearch().length} results)</span>}
+              </div>
+
+              {/* Search Bar */}
+              <div className="flex gap-3">
+                <div className="flex-1 flex items-center gap-2 bg-white dark:bg-slate-900 border-2 border-slate-200 dark:border-slate-700 focus-within:border-blue-500 rounded-xl px-4 py-3 transition-colors">
+                  <Search className="w-4 h-4 text-slate-400 flex-none" />
+                  <input autoFocus value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                    onKeyDown={e => e.key === "Escape" && setSearchQuery("")}
+                    placeholder="Search articles, drugs, categories..."
+                    className="bg-transparent flex-1 outline-none text-slate-900 dark:text-white placeholder-slate-400" />
+                  {searchQuery && <button onClick={() => setSearchQuery("")}><X className="w-4 h-4 text-slate-400 hover:text-slate-600" /></button>}
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="flex flex-wrap items-center gap-3 pb-4 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-slate-500" />
+                  <span className="text-sm font-medium text-slate-600 dark:text-slate-400">Filter:</span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {["All", ...CATEGORIES.slice(1, 6)].map(cat => (
+                    <button key={cat} onClick={() => setSearchFilter(cat)}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${searchFilter === cat ? "bg-blue-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700"}`}>
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+                <div className="ml-auto flex items-center gap-2">
+                  <SlidersHorizontal className="w-4 h-4 text-slate-500" />
+                  <span className="text-sm text-slate-500">Sort:</span>
+                  <select value={searchSort} onChange={e => setSearchSort(e.target.value as any)}
+                    className="text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 outline-none text-slate-700 dark:text-slate-300">
+                    <option value="recent">Most Recent</option>
+                    <option value="relevant">Most Relevant</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Results */}
+              {!searchQuery ? (
+                <div>
+                  <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">Trending Topics</h3>
+                  <div className="flex flex-wrap gap-2 mb-8">
+                    {["FDA Approval", "Clinical Trial", "CRISPR", "GLP-1", "mRNA", "Oncology", "Biosimilars", "Drug Shortage", "AI Medicine", "Pfizer", "Moderna", "AstraZeneca"].map(tag => (
+                      <button key={tag} onClick={() => setSearchQuery(tag)}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full text-sm text-slate-700 dark:text-slate-300 hover:border-blue-500 hover:text-blue-600 transition-colors">
+                        <Hash className="w-3 h-3" /> {tag}
+                      </button>
+                    ))}
+                  </div>
+                  <h3 className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-4">Browse Categories</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {CATEGORIES.slice(1).map(cat => (
+                      <button key={cat} onClick={() => { setActiveCategory(cat); navigate("home"); }}
+                        className={`p-4 rounded-xl border text-left hover:border-blue-300 dark:hover:border-blue-700 transition-all ${CAT_COLORS[cat] || "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"}`}>
+                        <div className="font-bold text-sm mb-1">{cat}</div>
+                        <div className="text-xs opacity-70">{articles.filter(a => a.category === cat).length} articles</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : getFilteredSearch().length === 0 ? (
+                <div className="text-center py-20">
+                  <Search className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
+                  <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-2">No results found for "{searchQuery}"</h3>
+                  <p className="text-slate-500 text-sm">Try different keywords or browse categories above</p>
+                  <button onClick={() => setSearchQuery("")} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium">Clear Search</button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {getFilteredSearch().map(article => (
+                    <div key={article.id} onClick={() => openArticle(article)}
+                      className="group flex gap-4 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 p-4 cursor-pointer transition-all">
+                      <img src={article.imageUrl} alt="" loading="lazy" className="w-32 h-24 object-cover rounded-lg flex-none hidden sm:block" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-2 flex-wrap">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${CAT_COLORS[article.category] || "bg-slate-100 text-slate-600"}`}>{article.category}</span>
+                          <span className="text-xs text-slate-500">{article.date}</span>
+                          <span className="text-xs text-slate-500">{article.readTime}</span>
+                        </div>
+                        <h3 className="font-bold text-slate-900 dark:text-white leading-snug mb-2 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">{article.title}</h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">{article.summary}</p>
+                        <div className="flex items-center justify-between mt-3">
+                          <span className="text-xs text-slate-400 font-medium">{article.source}</span>
+                          <span className="text-xs text-blue-600 dark:text-blue-400 font-bold">Read Article →</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ═══ AI LAB PAGE ═══ */}
           {page === "ai-lab" && (
             <div className="space-y-8">
@@ -872,102 +1245,126 @@ export default function App() {
 
           {/* ═══ DASHBOARD PAGE ═══ */}
           {page === "dashboard" && (
+            <DashboardPage articles={articles} fetchArticles={fetchArticles} />
+          )}
+          {/* ═══ ADMIN PAGE ═══ */}
+          {page === "admin" && (
             <div className="space-y-8">
               <div className="flex items-center justify-between">
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <BarChart2 className="w-6 h-6 text-blue-600" /> Live Analytics Dashboard
+                  <Shield className="w-6 h-6 text-blue-600" /> Admin Control Center
                 </h2>
-                <button onClick={() => fetchArticles()} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-                  <RefreshCw className="w-4 h-4" /> Refresh Data
+                <button onClick={() => { setAdminStats(null); setAdminLoading(true); fetch("/api/admin/stats").then(r=>r.json()).then(d=>{setAdminStats(d);setAdminLoading(false);}); }}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                  <RefreshCw className={`w-4 h-4 ${adminLoading ? "animate-spin" : ""}`} /> Refresh
                 </button>
               </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {[
-                  { label:"Total Articles", value:articles.length, icon:Newspaper, color:"text-blue-600", bg:"bg-blue-50 dark:bg-blue-900/20" },
-                  { label:"Drug Approvals", value:articles.filter(a=>a.category==="Drug Approvals").length, icon:Shield, color:"text-amber-600", bg:"bg-amber-50 dark:bg-amber-900/20" },
-                  { label:"Clinical Trials", value:articles.filter(a=>a.category==="Clinical Trials").length, icon:FlaskConical, color:"text-purple-600", bg:"bg-purple-50 dark:bg-purple-900/20" },
-                  { label:"AI Articles", value:articles.filter(a=>a.category==="AI in Healthcare").length, icon:Sparkles, color:"text-emerald-600", bg:"bg-emerald-50 dark:bg-emerald-900/20" },
-                ].map((stat,i) => (
-                  <div key={i} className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
-                    <div className={`w-10 h-10 ${stat.bg} rounded-xl flex items-center justify-center mb-3`}>
-                      <stat.icon className={`w-5 h-5 ${stat.color}`} />
-                    </div>
-                    <div className="text-3xl font-black text-slate-900 dark:text-white mb-1">{stat.value}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Category Chart */}
-              <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-                <h3 className="font-bold text-slate-900 dark:text-white mb-6 flex items-center gap-2">
-                  <BarChart2 className="w-5 h-5 text-blue-600" /> Articles by Category
-                </h3>
-                <div className="space-y-3">
-                  {Object.keys(CAT_COLORS).map(cat => {
-                    const count = articles.filter(a => a.category === cat).length;
-                    const pct = articles.length ? Math.round((count/articles.length)*100) : 0;
-                    return (
-                      <div key={cat} className="flex items-center gap-4">
-                        <span className="text-sm text-slate-700 dark:text-slate-300 w-40 flex-none font-medium">{cat}</span>
-                        <div className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-full h-2.5">
-                          <div className="bg-blue-600 h-2.5 rounded-full transition-all duration-700" style={{width:`${pct}%`}} />
+              {adminLoading ? (
+                <div className="flex items-center justify-center py-20"><RefreshCw className="w-6 h-6 animate-spin text-blue-600" /></div>
+              ) : adminStats ? (
+                <>
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    {[
+                      { label:"Total Articles",    value: adminStats.articles,       icon: Newspaper,  color:"text-blue-600",   bg:"bg-blue-50 dark:bg-blue-900/20"   },
+                      { label:"Newsletter Subs",   value: adminStats.subscribers,    icon: Mail,       color:"text-emerald-600",bg:"bg-emerald-50 dark:bg-emerald-900/20"},
+                      { label:"Social Posts",      value: adminStats.socialPosts,    icon: Share2,     color:"text-purple-600", bg:"bg-purple-50 dark:bg-purple-900/20"},
+                      { label:"Email Reach",       value: adminStats.newsletterReach,icon: Send,       color:"text-amber-600",  bg:"bg-amber-50 dark:bg-amber-900/20"  },
+                      { label:"Avg SEO Score",     value: `${adminStats.avgSeoScore}/100`, icon: TrendingUp, color:"text-cyan-600", bg:"bg-cyan-50 dark:bg-cyan-900/20"},
+                    ].map((stat,i) => (
+                      <div key={i} className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-5 shadow-sm">
+                        <div className={`w-9 h-9 ${stat.bg} rounded-lg flex items-center justify-center mb-3`}>
+                          <stat.icon className={`w-4 h-4 ${stat.color}`} />
                         </div>
-                        <span className="text-sm font-mono text-slate-500 dark:text-slate-400 w-16 text-right">{count} articles</span>
+                        <div className="text-2xl font-black text-slate-900 dark:text-white">{stat.value}</div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">{stat.label}</div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+                    ))}
+                  </div>
 
-              {/* Stocks Table */}
-              <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
-                <h3 className="font-bold text-slate-900 dark:text-white mb-5 flex items-center gap-2">
-                  <LineChart className="w-5 h-5 text-blue-600" /> Pharma Stock Performance
-                  <span className="ml-auto text-xs text-emerald-500 font-mono flex items-center gap-1">
-                    <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse inline-block" /> LIVE
-                  </span>
-                </h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-xs text-slate-500 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800 uppercase tracking-wider">
-                        <th className="pb-3 font-semibold">Company</th>
-                        <th className="pb-3 font-semibold text-right">Price</th>
-                        <th className="pb-3 font-semibold text-right">Change</th>
-                        <th className="pb-3 font-semibold text-right">% Change</th>
-                        <th className="pb-3 font-semibold text-right">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {STOCKS.map(s => (
-                        <tr key={s.symbol} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                          <td className="py-3">
-                            <span className="font-bold text-slate-900 dark:text-white">{s.symbol}</span>
-                            <span className="text-slate-500 dark:text-slate-400 ml-2 text-xs">{s.name}</span>
-                          </td>
-                          <td className="py-3 text-right font-mono font-bold text-slate-900 dark:text-white">${s.price.toFixed(2)}</td>
-                          <td className={`py-3 text-right font-mono ${s.up?"text-emerald-600":"text-red-500"}`}>{s.change > 0 ? "+" : ""}{s.change.toFixed(2)}</td>
-                          <td className={`py-3 text-right font-mono font-bold ${s.up?"text-emerald-600":"text-red-500"}`}>
-                            <span className="flex items-center justify-end gap-0.5">
-                              {s.up ? <ArrowUpRight className="w-3.5 h-3.5"/> : <ArrowDownRight className="w-3.5 h-3.5"/>}
-                              {s.changePct > 0 ? "+" : ""}{s.changePct.toFixed(2)}%
-                            </span>
-                          </td>
-                          <td className="py-3 text-right">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${s.up ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" : "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"}`}>
-                              {s.up ? "↑ BUY" : "↓ SELL"}
-                            </span>
-                          </td>
-                        </tr>
+                  {/* Agent Logs */}
+                  <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                    <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                      <Terminal className="w-5 h-5 text-emerald-600" /> Live Agent Logs
+                      <span className="ml-auto text-xs text-emerald-500 font-mono flex items-center gap-1">
+                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse inline-block" /> RUNNING
+                      </span>
+                    </h3>
+                    <div className="bg-slate-950 rounded-xl p-5 font-mono text-xs space-y-1.5 max-h-80 overflow-y-auto">
+                      {adminStats.agentLogs?.length === 0 ? (
+                        <span className="text-slate-500">No agent logs yet. Agents run daily at 4-9 AM IST.</span>
+                      ) : adminStats.agentLogs?.map((log: any, i: number) => (
+                        <div key={i} className="flex items-start gap-3">
+                          <span className="text-slate-500 flex-none w-32">{new Date(log.ran_at).toLocaleTimeString("en-IN")}</span>
+                          <span className={`flex-none font-bold w-8 ${log.status === "success" ? "text-emerald-400" : "text-red-400"}`}>
+                            {log.status === "success" ? "✅" : "❌"}
+                          </span>
+                          <span className="text-blue-400 flex-none w-40">[{log.agent_name}]</span>
+                          <span className="text-slate-300">{log.message}</span>
+                          {log.articles_processed > 0 && <span className="text-amber-400 ml-auto flex-none">{log.articles_processed} items</span>}
+                        </div>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
-                <p className="text-[10px] text-slate-400 mt-4 font-mono">* Market data delayed 15 min. Not financial advice. For informational purposes only.</p>
-              </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                    <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
+                      <Zap className="w-5 h-5 text-amber-500" /> Quick Actions
+                    </h3>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                      {[
+                        { label:"Trigger News Fetch",   desc:"Fetch latest pharma news now",   action: () => triggerAgent(), color:"bg-emerald-600 hover:bg-emerald-700" },
+                        { label:"View Sitemap",         desc:"Check Google sitemap",            action: () => window.open("/sitemap.xml","_blank"), color:"bg-blue-600 hover:bg-blue-700" },
+                        { label:"Google News Sitemap",  desc:"Submit to Google News",           action: () => window.open("/news-sitemap.xml","_blank"), color:"bg-purple-600 hover:bg-purple-700" },
+                        { label:"Check Robots.txt",     desc:"View crawl rules",                action: () => window.open("/robots.txt","_blank"), color:"bg-slate-700 hover:bg-slate-600" },
+                      ].map((action,i) => (
+                        <button key={i} onClick={action.action}
+                          className={`${action.color} text-white rounded-xl p-4 text-left transition-colors`}>
+                          <div className="font-bold text-sm mb-1">{action.label}</div>
+                          <div className="text-xs opacity-80">{action.desc}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* System Status */}
+                  <div className="bg-slate-900 dark:bg-slate-950 rounded-xl border border-slate-700 p-6">
+                    <h3 className="font-bold text-white mb-4 flex items-center gap-2 font-mono text-sm uppercase tracking-wider">
+                      <Activity className="w-4 h-4 text-emerald-400" /> System Status
+                    </h3>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                      {[
+                        { name:"CEO Agent",      time:"4:00 AM IST", status:"active" },
+                        { name:"News Collector", time:"5:00 AM IST", status:"active" },
+                        { name:"Article Writer", time:"5:30 AM IST", status:"active" },
+                        { name:"SEO Optimizer",  time:"6:00 AM IST", status:"active" },
+                        { name:"Social Publisher",time:"7:00 AM IST",status:"active" },
+                        { name:"Newsletter",     time:"8:00 AM Mon", status:"active" },
+                        { name:"Competitor Intel",time:"9:00 AM Sun",status:"active" },
+                        { name:"Resend Email",   time:"On subscribe",status: process.env.RESEND_API_KEY ? "active" : "inactive" },
+                      ].map((agent,i) => (
+                        <div key={i} className="bg-slate-800 rounded-lg p-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`w-2 h-2 rounded-full ${agent.status === "active" ? "bg-emerald-500 animate-pulse" : "bg-red-500"}`} />
+                            <span className="text-white text-xs font-bold">{agent.name}</span>
+                          </div>
+                          <div className="text-slate-400 text-[10px] font-mono">{agent.time}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-slate-700 flex items-center gap-4 text-xs font-mono">
+                      <span className="text-slate-400">Last updated: {new Date(adminStats.lastUpdated).toLocaleString("en-IN")}</span>
+                      <a href="/sitemap.xml" target="_blank" className="text-blue-400 hover:text-blue-300">sitemap.xml</a>
+                      <a href="/news-sitemap.xml" target="_blank" className="text-purple-400 hover:text-purple-300">news-sitemap.xml</a>
+                      <a href="/robots.txt" target="_blank" className="text-slate-400 hover:text-slate-300">robots.txt</a>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-20 text-slate-500">Failed to load admin stats. Check Supabase connection.</div>
+              )}
             </div>
           )}
         </main>
