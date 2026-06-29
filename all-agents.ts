@@ -15,7 +15,7 @@ const getGemini = () => new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY || "" 
 });
 
-const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+const SITE_URL = process.env.SITE_URL || "https://pharmanews.co.in";
 
 function msUntilTime(hour: number, minute = 0): number {
   const now = new Date();
@@ -608,8 +608,6 @@ async function runPhase6(): Promise<number> {
   console.log(`✅ [Phase 6] Done — ${competitors.length} competitors analyzed`);
   return competitors.length;
 }
-
-// ── CEO EXECUTIVE AGENT ────────────────────────────────────
 async function runCEO(): Promise<void> {
   console.log("");
   console.log("👔 ═══════════════════════════════════════");
@@ -677,6 +675,8 @@ export function startAllAgents(): void {
   schedule("Phase5",     8,  0, runPhase5);
   schedule("Phase6",     9,  0, runPhase6);
   schedule("Phase7",     6, 30, runPhase7); // Fact check after article writer
+  schedule("Phase8",     4, 30, runPhase8); // Trending before news collector
+  schedule("Phase8",     4, 30, runPhase8); // Trending topics before news collector
   schedule("Phase8",     4, 30, runPhase8); // Trending topics before news collector
 
   // Also run Phase 1 immediately to fetch news
