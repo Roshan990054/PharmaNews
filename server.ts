@@ -1022,7 +1022,7 @@ app.post("/api/newsletter/subscribe", async (req, res) => {
         method: "POST",
         headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          from: "PharmaNews <newsletter@pharmanews.onrender.com>",
+          from: "PharmaNews <newsletter@pharmanews.co.in>",
           to: email,
           subject: "Welcome to PharmaNews Weekly Digest! 💊",
           html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
@@ -1039,7 +1039,7 @@ app.post("/api/newsletter/subscribe", async (req, res) => {
                 <li>Clinical trial breakthroughs</li>
                 <li>AI in healthcare insights</li>
               </ul>
-              <a href="https://pharmanews.onrender.com" style="background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;margin-top:16px">Visit PharmaNews →</a>
+              <a href="https://pharmanews.co.in" style="background:#2563eb;color:white;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block;margin-top:16px">Visit PharmaNews →</a>
             </div>
             <div style="background:#f8fafc;padding:16px;text-align:center;font-size:12px;color:#6b7280">
               © 2026 PharmaNews • AI-Powered Pharmaceutical Intelligence
@@ -1175,7 +1175,7 @@ app.get("/api/social/posts", async (req, res) => {
 
 // Sitemap XML — tells Google all your pages
 app.get("/sitemap.xml", async (req, res) => {
-  const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+  const SITE_URL = process.env.SITE_URL || "https://pharmanews.co.in";
 
   // Get all published articles from Supabase
   let articleUrls = "";
@@ -1246,7 +1246,7 @@ app.get("/sitemap.xml", async (req, res) => {
 
 // Robots.txt — tells Google what to crawl
 app.get("/robots.txt", (req, res) => {
-  const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+  const SITE_URL = process.env.SITE_URL || "https://pharmanews.co.in";
   res.setHeader("Content-Type", "text/plain");
   res.send(`User-agent: *
 Allow: /
@@ -1269,7 +1269,7 @@ app.get("/google-site-verification:code", (req, res) => {
 
 // Article Schema — NewsArticle JSON-LD for each article
 app.get("/api/article-schema/:id", async (req, res) => {
-  const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+  const SITE_URL = process.env.SITE_URL || "https://pharmanews.co.in";
   try {
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
@@ -1313,7 +1313,7 @@ app.get("/api/article-schema/:id", async (req, res) => {
 
 // Open Graph Image Generator for articles
 app.get("/api/og-image/:id", async (req, res) => {
-  const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+  const SITE_URL = process.env.SITE_URL || "https://pharmanews.co.in";
   try {
     const { createClient } = await import("@supabase/supabase-js");
     const supabase = createClient(
@@ -1341,7 +1341,7 @@ app.get("/api/og-image/:id", async (req, res) => {
         <div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Arial;font-size:52px;font-weight:bold;color:white;line-height:1.3">${title}</div>
       </foreignObject>
       <text x="60" y="550" font-family="Arial" font-size="24" fill="#93c5fd">By ${article.author || "PharmaNews Staff"}</text>
-      <text x="60" y="590" font-family="Arial" font-size="20" fill="#64748b">pharmanews.onrender.com</text>
+      <text x="60" y="590" font-family="Arial" font-size="20" fill="#64748b">pharmanews.co.in</text>
       <text x="1140" y="590" font-family="Arial" font-size="36" fill="#1d4ed8" text-anchor="end">💊</text>
     </svg>`;
 
@@ -1353,7 +1353,7 @@ app.get("/api/og-image/:id", async (req, res) => {
 
 // Google News Sitemap
 app.get("/news-sitemap.xml", async (req, res) => {
-  const SITE_URL = process.env.SITE_URL || "https://pharmanews.onrender.com";
+  const SITE_URL = process.env.SITE_URL || "https://pharmanews.co.in";
   let newsItems = "";
   try {
     const { createClient } = await import("@supabase/supabase-js");
