@@ -36,6 +36,62 @@ async function logAgent(name: string, status: string, message: string, count = 0
   } catch (e) { console.error("Log error:", e); }
 }
 
+// ── #24 RETRY LOGIC — Wraps any agent function with auto-retry ──
+async function withRetry<T>(
+  agentName: string,
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  baseDelayMs = 5000
+): Promise<T | null> {
+  let lastError: any = null;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await fn();
+      if (attempt > 1) {
+        console.log(`  ✅ [${agentName}] Succeeded on retry attempt ${attempt}/${maxRetries}`);
+        await logAgent(agentName, "success", `Recovered after ${attempt} attempts`, 0);
+      }
+      return result;
+    } catch (error: any) {
+      lastError = error;
+      const errMsg = error?.message || String(error);
+      console.error(`  ⚠️  [${agentName}] Attempt ${attempt}/${maxRetries} failed: ${errMsg}`);
+
+      if (attempt < maxRetries) {
+        // Exponential backoff: 5s, 10s, 20s...
+        const delay = baseDelayMs * Math.pow(2, attempt - 1);
+        console.log(`  ⏳ [${agentName}] Retrying in ${delay/1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+  }
+  // All retries exhausted — log failure
+  console.error(`  ❌ [${agentName}] Failed after ${maxRetries} attempts: ${lastError?.message || lastError}`);
+  await logAgent(agentName, "error", `Failed after ${maxRetries} retries: ${String(lastError).substring(0,200)}`, 0);
+  return null;
+}
+
+// ── #24 SAFE FETCH — fetch wrapper with retry + timeout ──
+async function safeFetch(url: string, options: RequestInit = {}, retries = 2, timeoutMs = 15000): Promise<Response | null> {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const res = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok || res.status < 500) return res; // Don't retry client errors
+      throw new Error(`HTTP ${res.status}`);
+    } catch (e: any) {
+      if (i === retries) {
+        console.error(`  safeFetch failed after ${retries+1} tries:`, e?.message || e);
+        return null;
+      }
+      await new Promise(r => setTimeout(r, 2000 * (i + 1)));
+    }
+  }
+  return null;
+}
+
 // ── PHASE 1: NEWS COLLECTOR ────────────────────────────────
 async function runPhase1(): Promise<number> {
   console.log("📰 [Phase 1] News Collector starting...");
@@ -61,7 +117,8 @@ async function runPhase1(): Promise<number> {
   let saved = 0;
   for (const { q, cat } of queries) {
     try {
-      const res = await fetch(`https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&language=en&sortBy=publishedAt&pageSize=3&apiKey=${apiKey}`);
+      const res = await safeFetch(`https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&language=en&sortBy=publishedAt&pageSize=3&apiKey=${apiKey}`);
+      if (!res) { console.log(`  ⚠️  Skipping ${cat} — NewsAPI unreachable`); continue; }
       const data = await res.json();
       for (const raw of data.articles || []) {
         if (!raw.title || raw.title === "[Removed]") continue;
@@ -608,6 +665,192 @@ async function runPhase6(): Promise<number> {
   console.log(`✅ [Phase 6] Done — ${competitors.length} competitors analyzed`);
   return competitors.length;
 }
+// ── PHASE 9: IMAGE ENHANCEMENT AGENT ─────────────────────
+async function runPhase9(): Promise<number> {
+  console.log("🖼️ [Phase 9] Image Enhancement Agent starting...");
+
+  const unsplashKey = process.env.UNSPLASH_ACCESS_KEY;
+
+  // Category default images (always available as fallback)
+  const CATEGORY_IMAGES: Record<string, string[]> = {
+    "Drug Approvals":    [
+      "https://images.unsplash.com/photo-1576086213369-97a306d36557?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1471864190281-a93a3070b6de?w=800&auto=format&fit=crop"
+    ],
+    "Clinical Trials":  [
+      "https://images.unsplash.com/photo-1530026405186-ed1ea400c3af?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1579154204601-01588f351e67?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1559757175-0eb30cd8c063?w=800&auto=format&fit=crop"
+    ],
+    "Biotechnology":    [
+      "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&auto=format&fit=crop"
+    ],
+    "AI in Healthcare": [
+      "https://images.unsplash.com/photo-1555949963-aa79dcee981c?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1677442135703-1787eea5ce01?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=800&auto=format&fit=crop"
+    ],
+    "Industry News":    [
+      "https://images.unsplash.com/photo-1563213126-a4273aed2016?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?w=800&auto=format&fit=crop"
+    ],
+    "Medical Research": [
+      "https://images.unsplash.com/photo-1532187863486-abf9dbad1b69?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1576671081837-49000212a370?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=800&auto=format&fit=crop"
+    ],
+    "Healthcare Policy": [
+      "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1450101499163-c8848c66ca85?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=800&auto=format&fit=crop"
+    ],
+    "Oncology":        [
+      "https://images.unsplash.com/photo-1579154204601-01588f351e67?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1631815589968-fdb09a223b1e?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1582560475093-ba66accbc424?w=800&auto=format&fit=crop"
+    ],
+    "Vaccines":        [
+      "https://images.unsplash.com/photo-1605289982774-9a6fef564df8?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1584118624012-df056829fbd0?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=800&auto=format&fit=crop"
+    ],
+    "Drug Safety":     [
+      "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1471864190281-a93a3070b6de?w=800&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1550572017-edd951aa8f72?w=800&auto=format&fit=crop"
+    ],
+  };
+
+  // Get articles with missing or default images
+  const { data: articles } = await getSupabase()
+    .from("articles")
+    .select("id, title, category, image_url")
+    .eq("published", true)
+    .order("created_at", { ascending: false })
+    .limit(30);
+
+  if (!articles?.length) {
+    console.log("  ℹ️  No articles to enhance");
+    return 0;
+  }
+
+  let enhanced = 0;
+
+  for (const article of articles) {
+    const currentImg = article.image_url || "";
+
+    // Skip if already has a good unique image (not a generic fallback)
+    const isGenericImage = !currentImg ||
+      currentImg.includes("Thumbr") ||
+      currentImg.length < 10;
+
+    if (!isGenericImage) continue;
+
+    try {
+      let newImageUrl = "";
+
+      // Try Unsplash API if key available
+      if (unsplashKey) {
+        // Use Gemini to create perfect search query
+        const queryPrompt = `Create a 3-word Unsplash photo search query for this pharma article.
+Title: ${article.title}
+Category: ${article.category}
+Return ONLY the search query, nothing else. Example: "medicine laboratory research"`;
+
+        const queryRes = await getGemini().models.generateContent({
+          model: "gemini-2.0-flash", contents: queryPrompt
+        });
+        const searchQuery = queryRes.text?.trim().replace(/"/g, "") || article.category;
+
+        const unsplashRes = await fetch(
+          `https://api.unsplash.com/search/photos?query=${encodeURIComponent(searchQuery)}&per_page=5&orientation=landscape`,
+          { headers: { "Authorization": `Client-ID ${unsplashKey}` } }
+        );
+        const unsplashData = await unsplashRes.json();
+        if (unsplashData.results?.length > 0) {
+          const photo = unsplashData.results[Math.floor(Math.random() * Math.min(3, unsplashData.results.length))];
+          newImageUrl = `${photo.urls.regular}&w=800&auto=format&fit=crop`;
+          console.log(`  🎨 Unsplash image found for: ${article.title?.substring(0, 40)}...`);
+        }
+      }
+
+      // Fallback to category images pool
+      if (!newImageUrl) {
+        const categoryPool = CATEGORY_IMAGES[article.category] || CATEGORY_IMAGES["Medical Research"];
+        newImageUrl = categoryPool[Math.floor(Math.random() * categoryPool.length)];
+        console.log(`  📦 Category fallback for: ${article.title?.substring(0, 40)}...`);
+      }
+
+      // Update article image
+      const { error } = await getSupabase()
+        .from("articles")
+        .update({ image_url: newImageUrl })
+        .eq("id", article.id);
+
+      if (!error) enhanced++;
+
+    } catch (e) {
+      console.error(`  Image error for ${article.id}:`, e);
+    }
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  await logAgent("Phase9-ImageEnhancement", "success",
+    `Enhanced ${enhanced} article images`, enhanced);
+  console.log(`✅ [Phase 9] Done — ${enhanced} images enhanced!`);
+  return enhanced;
+}
+
+// ── PHASE 10: TRANSLATION AGENT (Hindi) ───────────────────
+async function runPhase10(): Promise<number> {
+  console.log("🌐 [Phase 10] Translation Agent starting...");
+  const { data: articles } = await getSupabase()
+    .from("articles")
+    .select("id, title, summary")
+    .eq("published", true)
+    .is("title_hi", null)
+    .order("created_at", { ascending: false })
+    .limit(10);
+
+  if (!articles?.length) { console.log("  ℹ️  No articles need translation"); return 0; }
+
+  let translated = 0;
+  for (const article of articles) {
+    try {
+      const prompt = `Translate this pharma news to Hindi (Devanagari script). Keep medical/drug names in English where appropriate.
+
+Title: ${article.title}
+Summary: ${article.summary}
+
+Respond ONLY in JSON: {"title_hi": "हिंदी शीर्षक", "summary_hi": "हिंदी सारांश"}`;
+
+      const res = await getGemini().models.generateContent({
+        model: "gemini-2.0-flash", contents: prompt,
+        config: { responseMimeType: "application/json" }
+      });
+      const result = JSON.parse(res.text?.replace(/```json|```/g, "").trim() || "{}");
+
+      await getSupabase().from("articles").update({
+        title_hi: result.title_hi || "",
+        summary_hi: result.summary_hi || ""
+      }).eq("id", article.id);
+
+      translated++;
+      console.log(`  ✅ Translated: ${article.title?.substring(0, 40)}...`);
+    } catch (e) { console.error("  Translation error:", e); }
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  await logAgent("Phase10-Translation", "success", `Translated ${translated} articles to Hindi`, translated);
+  console.log(`✅ [Phase 10] Done — ${translated} articles translated!`);
+  return translated;
+}
+
+// ── CEO EXECUTIVE AGENT ────────────────────────────────────
 async function runCEO(): Promise<void> {
   console.log("");
   console.log("👔 ═══════════════════════════════════════");
@@ -624,26 +867,89 @@ async function runCEO(): Promise<void> {
   const { count: totalSubs } = await getSupabase().from("subscribers")
     .select("*", { count: "exact", head: true }).eq("active", true);
 
-  const agentNames = ["Phase1-NewsCollector","Phase2-ArticleWriter","Phase3-SEOOptimizer","Phase4-SocialPublisher","Phase5-Newsletter","Phase6-CompetitorIntel"];
-  
+  const agentNames = ["Phase1-NewsCollector","Phase2-ArticleWriter","Phase3-SEOOptimizer","Phase4-SocialPublisher","Phase5-Newsletter","Phase6-CompetitorIntel","Phase7-FactChecker","Phase8-TrendingTopics","Phase9-ImageEnhancement","Phase10-Translation"];
+
   console.log("📊 Agent Performance:");
+  const perfLines: string[] = [];
   agentNames.forEach(name => {
     const agentLog = logs?.find(l => l.agent_name === name);
     const score = agentLog ? (agentLog.status === "success" ? 100 : 40) : 0;
-    const bar = "█".repeat(score/10) + "░".repeat(10 - score/10);
+    const bar = "█".repeat(Math.floor(score/10)) + "░".repeat(10 - Math.floor(score/10));
     console.log(`   ${name.padEnd(28)} [${bar}] ${score}/100`);
+    perfLines.push(`<tr><td style="padding:6px 0;color:#374151">${name}</td><td style="padding:6px 0;text-align:right;font-weight:bold;color:${score>=80?'#16a34a':score>=50?'#d97706':'#dc2626'}">${score}/100</td></tr>`);
   });
 
+  let summary = "Platform operating normally.";
+  let recommendations = "Continue daily operations.";
   try {
     const prompt = `You are the CEO AI of PharmaNews. Platform stats:
 - Total articles: ${totalArticles}
 - Subscribers: ${totalSubs}
 - Agents run today: ${logs?.length || 0}
 
-In 2 sentences: give an executive summary and 2 growth recommendations.`;
-    const res = await getGemini().models.generateContent({ model: "gemini-2.0-flash", contents: prompt });
-    console.log(`📋 Executive Summary: ${res.text}`);
+In 2 sentences: give an executive summary. Then in 2 more sentences: give growth recommendations.
+Respond ONLY in JSON: {"summary":"...", "recommendations":"..."}`;
+    const res = await getGemini().models.generateContent({
+      model: "gemini-2.0-flash", contents: prompt,
+      config: { responseMimeType: "application/json" }
+    });
+    const result = JSON.parse(res.text?.replace(/```json|```/g, "").trim() || "{}");
+    summary = result.summary || summary;
+    recommendations = result.recommendations || recommendations;
+    console.log(`📋 Executive Summary: ${summary}`);
   } catch (e) {}
+
+  // ── EMAIL THE DAILY REPORT TO ADMIN ──
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const resendKey = process.env.RESEND_API_KEY;
+  if (adminEmail && resendKey) {
+    try {
+      const healthScore = Math.round(perfLines.length ? agentNames.filter(n => logs?.find(l=>l.agent_name===n && l.status==="success")).length / agentNames.length * 100 : 0);
+      const html = `<!DOCTYPE html><html><body style="margin:0;font-family:Arial,sans-serif;background:#f3f4f6">
+        <table width="600" align="center" cellpadding="0" cellspacing="0" style="background:white;border-radius:12px;overflow:hidden;margin:24px auto">
+          <tr><td style="background:#0f172a;padding:24px 32px">
+            <h1 style="color:white;margin:0;font-size:22px">👔 CEO Daily Report</h1>
+            <p style="color:#94a3b8;margin:4px 0 0;font-size:12px;font-family:monospace">${new Date().toLocaleDateString("en-IN",{weekday:"long",month:"long",day:"numeric",year:"numeric"})}</p>
+          </td></tr>
+          <tr><td style="padding:24px 32px">
+            <div style="background:${healthScore>=80?'#f0fdf4':healthScore>=50?'#fffbeb':'#fef2f2'};border-radius:8px;padding:16px;margin-bottom:20px;text-align:center">
+              <div style="font-size:36px;font-weight:bold;color:${healthScore>=80?'#16a34a':healthScore>=50?'#d97706':'#dc2626'}">${healthScore}/100</div>
+              <div style="font-size:12px;color:#6b7280;text-transform:uppercase;letter-spacing:1px">System Health Score</div>
+            </div>
+            <h3 style="color:#111827;font-size:14px;margin-bottom:8px">📝 Executive Summary</h3>
+            <p style="color:#4b5563;font-size:13px;line-height:1.6">${summary}</p>
+            <h3 style="color:#111827;font-size:14px;margin:16px 0 8px">🚀 Recommendations</h3>
+            <p style="color:#4b5563;font-size:13px;line-height:1.6">${recommendations}</p>
+            <h3 style="color:#111827;font-size:14px;margin:20px 0 8px">📊 Agent Performance</h3>
+            <table width="100%" style="font-size:13px"><tbody>${perfLines.join("")}</tbody></table>
+            <h3 style="color:#111827;font-size:14px;margin:20px 0 8px">📈 Platform Stats</h3>
+            <table width="100%" style="font-size:13px">
+              <tr><td style="padding:4px 0">Total Articles</td><td style="text-align:right;font-weight:bold">${totalArticles}</td></tr>
+              <tr><td style="padding:4px 0">Active Subscribers</td><td style="text-align:right;font-weight:bold">${totalSubs}</td></tr>
+              <tr><td style="padding:4px 0">Agent Runs Today</td><td style="text-align:right;font-weight:bold">${logs?.length || 0}</td></tr>
+            </table>
+          </td></tr>
+          <tr><td style="background:#111827;padding:16px 32px;text-align:center">
+            <p style="color:#6b7280;font-size:11px;margin:0">PharmaNews CEO Agent • Automated Daily Report</p>
+          </td></tr>
+        </table>
+      </body></html>`;
+
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${resendKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from: "PharmaNews CEO <ceo@pharmanews.co.in>",
+          to: adminEmail,
+          subject: `👔 CEO Daily Report — Health Score ${healthScore}/100 — ${new Date().toLocaleDateString("en-IN")}`,
+          html
+        })
+      });
+      console.log(`  📧 CEO report emailed to ${adminEmail}`);
+    } catch (e) { console.error("  Email report error:", e); }
+  } else {
+    console.log("  ℹ️  Set ADMIN_EMAIL env var to receive daily CEO reports");
+  }
 
   await logAgent("CEO-ExecutiveAgent", "success", `Daily audit — ${totalArticles} articles, ${totalSubs} subscribers`, totalArticles || 0);
   console.log("👔 ═══════════════════════════════════════");
@@ -653,35 +959,36 @@ In 2 sentences: give an executive summary and 2 growth recommendations.`;
 // ── MASTER ORCHESTRATOR ────────────────────────────────────
 export function startAllAgents(): void {
   console.log("🚀 PharmaNews AI Agent System Starting...");
-  console.log("👔 CEO + 6 Phase Agents Ready");
+  console.log("👔 CEO + 10 Phase Agents Ready");
   console.log("");
 
   const schedule = (name: string, hour: number, min: number, fn: () => Promise<any>) => {
     const run = () => {
       const ms = msUntilTime(hour, min);
-      console.log(`⏰ [${name}] Next run in ${Math.floor(ms/3600000)}h ${Math.floor((ms%3600000)/60000)}m (${hour}:${String(min).padStart(2,"0")} AM IST)`);
-      setTimeout(async () => { try { await fn(); } catch(e) { console.error(`[${name}] Error:`, e); } run(); }, ms);
+      console.log(`⏰ [${name}] Next run in ${Math.floor(ms/3600000)}h ${Math.floor((ms%3600000)/60000)}m (${hour}:${String(min).padStart(2,"0")} IST)`);
+      setTimeout(async () => {
+        await withRetry(name, fn, 3, 5000); // #24 — auto-retry up to 3 times with backoff
+        run();
+      }, ms);
     };
     run();
   };
 
-  // Run CEO immediately then schedule
-  runCEO().catch(console.error);
-  schedule("CEO",        4,  0, runCEO);
-  schedule("Phase1",     5,  0, runPhase1);
-  schedule("Phase2",     5, 30, runPhase2);
-  schedule("Phase3",     6,  0, runPhase3);
-  schedule("Phase4",     7,  0, runPhase4);
-  schedule("Phase5",     8,  0, runPhase5);
-  schedule("Phase6",     9,  0, runPhase6);
-  schedule("Phase7",     6, 30, runPhase7); // Fact check after article writer
-  schedule("Phase8",     4, 30, runPhase8); // Trending before news collector
-  schedule("Phase8",     4, 30, runPhase8); // Trending topics before news collector
-  schedule("Phase8",     4, 30, runPhase8); // Trending topics before news collector
+  withRetry("CEO", runCEO, 2, 3000).catch(console.error);
+  schedule("CEO",     4,  0, runCEO);
+  schedule("Phase8",  4, 30, runPhase8);  // Trending topics
+  schedule("Phase1",  5,  0, runPhase1);  // News collector
+  schedule("Phase2",  5, 30, runPhase2);  // Article writer
+  schedule("Phase9",  5, 45, runPhase9);  // Image enhancement
+  schedule("Phase3",  6,  0, runPhase3);  // SEO optimizer
+  schedule("Phase7",  6, 30, runPhase7);  // Fact checker
+  schedule("Phase10", 6, 45, runPhase10); // Translation
+  schedule("Phase4",  7,  0, runPhase4);  // Social publisher
+  schedule("Phase5",  8,  0, runPhase5);  // Newsletter (Mon)
+  schedule("Phase6",  9,  0, runPhase6);  // Competitor intel (Sun)
 
-  // Also run Phase 1 immediately to fetch news
-  setTimeout(() => runPhase1().catch(console.error), 5000);
+  setTimeout(() => withRetry("Phase1-Startup", runPhase1, 2, 3000).catch(console.error), 5000);
 
-  console.log("📅 Schedule (IST): 4AM→CEO  4:30AM→Trending  5AM→News  5:30AM→Writer  6AM→SEO  6:30AM→FactCheck  7AM→Social  8AM→Newsletter(Mon)  9AM→Competitor(Sun)");
-  console.log("✅ All 9 agents running!");
+  console.log("📅 Schedule (IST): 4AM CEO → 4:30 Trending → 5AM News → 5:30 Writer → 5:45 Images → 6AM SEO → 6:30 FactCheck → 6:45 Translate → 7AM Social → 8AM Newsletter(Mon) → 9AM Competitor(Sun)");
+  console.log("✅ All 10 agents running!");
 }
