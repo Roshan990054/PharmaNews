@@ -995,6 +995,35 @@ app.post("/api/auto-news/refresh", async (req, res) => {
   }
 });
 
+// Manual trigger for social posting (for testing Buffer)
+app.post("/api/agents/trigger-social", async (req, res) => {
+  try {
+    const { startAllAgents } = await import("./all-agents.js");
+    // Test Buffer connection first
+    const token = process.env.BUFFER_ACCESS_TOKEN;
+    if (!token) return res.json({ success: false, error: "No BUFFER_ACCESS_TOKEN set" });
+
+    const profileRes = await fetch(`https://api.bufferapp.com/1/profiles.json?access_token=${token}`);
+    const profiles = await profileRes.json();
+
+    if (!Array.isArray(profiles) || profiles.length === 0) {
+      return res.json({
+        success: false,
+        error: "Buffer token invalid or no profiles connected",
+        hint: "Go to buffer.com → reconnect Instagram/Twitter/LinkedIn → get new access token"
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Buffer connected! Found ${profiles.length} profiles: ${profiles.map((p:any) => p.service).join(", ")}`,
+      profiles: profiles.map((p:any) => ({ id: p.id, service: p.service, username: p.service_username }))
+    });
+  } catch (error) {
+    res.json({ success: false, error: String(error) });
+  }
+});
+
 
 // ============================================================
 // NEWSLETTER, BOOKMARKS, AGENT STATUS — Complete API Suite
