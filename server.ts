@@ -998,26 +998,48 @@ app.post("/api/auto-news/refresh", async (req, res) => {
 // Manual trigger for social posting (for testing Buffer)
 app.post("/api/agents/trigger-social", async (req, res) => {
   try {
-    const { startAllAgents } = await import("./all-agents.js");
-    // Test Buffer connection first
     const token = process.env.BUFFER_ACCESS_TOKEN;
-    if (!token) return res.json({ success: false, error: "No BUFFER_ACCESS_TOKEN set" });
+    if (!token) return res.json({ success: false, error: "No BUFFER_ACCESS_TOKEN set in Render environment" });
 
-    const profileRes = await fetch(`https://api.bufferapp.com/1/profiles.json?access_token=${token}`);
-    const profiles = await profileRes.json();
+    // Test with Buffer GraphQL API
+    const gqlRes = await fetch("https://api.bufferapp.com/graphql", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ query: `{ channels { id name service serviceType } }` })
+    });
 
-    if (!Array.isArray(profiles) || profiles.length === 0) {
+    const gqlData = await gqlRes.json();
+    const channels = gqlData?.data?.channels || [];
+
+    if (gqlData.errors) {
       return res.json({
         success: false,
-        error: "Buffer token invalid or no profiles connected",
-        hint: "Go to buffer.com → reconnect Instagram/Twitter/LinkedIn → get new access token"
+        error: "Buffer GraphQL error",
+        details: gqlData.errors,
+        hint: "Your token may be expired. Go to buffer.com → Settings → Apps & Integrations → regenerate token"
+      });
+    }
+
+    if (!channels.length) {
+      return res.json({
+        success: false,
+        error: "No channels found in Buffer",
+        hint: "Go to buffer.com → Add a channel → reconnect Instagram/Twitter/LinkedIn"
       });
     }
 
     res.json({
       success: true,
-      message: `Buffer connected! Found ${profiles.length} profiles: ${profiles.map((p:any) => p.service).join(", ")}`,
-      profiles: profiles.map((p:any) => ({ id: p.id, service: p.service, username: p.service_username }))
+      message: `Buffer connected! Found ${channels.length} channels`,
+      channels: channels.map((c: any) => ({
+        id: c.id,
+        service: c.service,
+        name: c.name,
+        type: c.serviceType
+      }))
     });
   } catch (error) {
     res.json({ success: false, error: String(error) });
