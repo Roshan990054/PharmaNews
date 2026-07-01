@@ -1406,6 +1406,60 @@ app.get("/manifest.json", (req, res) => {
   });
 });
 
+// Buffer Test Route — visit /api/buffer/test to check connection
+app.get("/api/buffer/test", async (req, res) => {
+  const token = process.env.BUFFER_ACCESS_TOKEN;
+  if (!token) return res.json({ success: false, error: "No BUFFER_ACCESS_TOKEN in environment" });
+  try {
+    const profileRes = await fetch(`https://api.bufferapp.com/1/profiles.json?access_token=${token}`);
+    const profiles = await profileRes.json();
+    if (!profileRes.ok) return res.json({ success: false, error: "Buffer API error", details: profiles });
+    if (!Array.isArray(profiles) || profiles.length === 0)
+      return res.json({ success: false, error: "No profiles found. Connect Instagram/Twitter/LinkedIn in Buffer." });
+    res.json({
+      success: true,
+      message: `Buffer connected! ${profiles.length} profiles found`,
+      profiles: profiles.map((p: any) => ({ service: p.service, username: p.formatted_username, id: p.id }))
+    });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
+});
+
+// Manual Buffer post — POST /api/buffer/post-now
+app.post("/api/buffer/post-now", async (req, res) => {
+  const token = process.env.BUFFER_ACCESS_TOKEN;
+  if (!token) return res.json({ success: false, error: "No BUFFER_ACCESS_TOKEN" });
+  try {
+    const profileRes = await fetch(`https://api.bufferapp.com/1/profiles.json?access_token=${token}`);
+    const profiles = await profileRes.json();
+    if (!Array.isArray(profiles) || !profiles.length)
+      return res.json({ success: false, error: "No Buffer profiles found" });
+    const profileIds = profiles.map((p: any) => p.id);
+
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(process.env.SUPABASE_URL || "", process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || "");
+    const { data: articles } = await supabase.from("articles").select("*").eq("published", true).order("created_at", { ascending: false }).limit(1);
+    if (!articles?.length) return res.json({ success: false, error: "No articles in Supabase" });
+
+    const article = articles[0];
+    const SITE_URL = process.env.SITE_URL || "https://pharmanews.co.in";
+    const text = `🔬 ${article.title}\n\n${(article.summary || "").substring(0, 100)}...\n\nRead more: ${SITE_URL}\n\n#PharmaNews #Healthcare #FDA #Pharma`;
+
+    const body = new URLSearchParams();
+    body.append("text", text.substring(0, 280));
+    body.append("access_token", token);
+    body.append("now", "true");
+    profileIds.forEach((id: string) => body.append("profile_ids[]", id));
+
+    const postRes = await fetch("https://api.bufferapp.com/1/updates/create.json", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString()
+    });
+    const result = await postRes.json();
+    res.json({ success: postRes.ok, result, articleTitle: article.title, profilesUsed: profiles.length });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
+});
+
 // Admin stats endpoint
 app.get("/api/admin/stats", async (req, res) => {
   try {
