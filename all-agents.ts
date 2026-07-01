@@ -367,15 +367,30 @@ async function getBufferProfiles(): Promise<any[]> {
   const token = process.env.BUFFER_ACCESS_TOKEN;
   if (!token) return [];
   try {
-    const res = await fetch(`https://api.bufferapp.com/1/profiles.json?access_token=${token}`);
-    if (res.ok) {
+    // Try Buffer API v1 first
+    const res = await safeFetch(
+      `https://api.bufferapp.com/1/profiles.json?access_token=${token}`
+    );
+    if (res && res.ok) {
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
-        console.log(`  ✅ Buffer profiles found: ${data.map((p:any)=>p.service).join(", ")}`);
+        console.log(`  ✅ Buffer profiles: ${data.map((p:any)=>p.service).join(", ")}`);
         return data;
       }
     }
-    console.log("  ⚠️  Buffer API returned no profiles — check your access token");
+    // Try Buffer Publish API v2
+    const res2 = await safeFetch("https://api.buffer.com/1/profiles.json", {
+      headers: { "Authorization": `Bearer ${token}` }
+    });
+    if (res2 && res2.ok) {
+      const data2 = await res2.json();
+      const profiles = data2.data || data2 || [];
+      if (Array.isArray(profiles) && profiles.length > 0) {
+        console.log(`  ✅ Buffer v2 profiles: ${profiles.map((p:any)=>p.service||p.type).join(", ")}`);
+        return profiles;
+      }
+    }
+    console.log("  ⚠️  Buffer API returned no profiles — token may be invalid or expired");
     return [];
   } catch (e) { console.error("  Buffer profile fetch error:", e); return []; }
 }
@@ -384,19 +399,48 @@ async function postToBuffer(text: string, profileIds: string[]): Promise<boolean
   const token = process.env.BUFFER_ACCESS_TOKEN;
   if (!token || !profileIds.length) return false;
   try {
+    // Try v1 API first
     const body = new URLSearchParams();
-    body.append("text", text.substring(0, 280));
+    body.append("text", text.substring(0, 500));
     body.append("access_token", token);
     body.append("now", "true");
     profileIds.forEach(id => body.append("profile_ids[]", id));
-    const res = await fetch("https://api.bufferapp.com/1/updates/create.json", {
+
+    const res = await safeFetch("https://api.bufferapp.com/1/updates/create.json", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString()
     });
-    const data = await res.json();
-    console.log(`  📊 Buffer response:`, JSON.stringify(data).substring(0, 150));
-    return data.success === true || (Array.isArray(data.updates) && data.updates.length > 0) || res.ok;
+
+    if (res) {
+      const data = await res.json();
+      console.log(`  📊 Buffer response:`, JSON.stringify(data).substring(0, 200));
+      if (data.success === true || (Array.isArray(data.updates) && data.updates.length > 0)) {
+        return true;
+      }
+    }
+
+    // Try v2 API as fallback
+    const res2 = await safeFetch("https://api.buffer.com/1/updates/create.json", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text: text.substring(0, 500),
+        profile_ids: profileIds,
+        now: true
+      })
+    });
+
+    if (res2 && res2.ok) {
+      const data2 = await res2.json();
+      console.log(`  📊 Buffer v2 response:`, JSON.stringify(data2).substring(0, 200));
+      return data2.success === true || !!(data2.updates?.length);
+    }
+
+    return false;
   } catch (e) { console.error("  Buffer post error:", e); return false; }
 }
 
