@@ -363,124 +363,69 @@ Respond ONLY in JSON:
 
 // ── PHASE 4: SOCIAL PUBLISHER ──────────────────────────────
 // ── Buffer API Helper ──────────────────────────────────────
-async function getBufferProfiles(): Promise<any[]> {
-  const token = process.env.BUFFER_ACCESS_TOKEN;
-  if (!token) return [];
+async function postToMakeWebhook(caption: string, title: string, category: string, imageUrl: string): Promise<boolean> {
+  const webhookUrl = process.env.MAKE_WEBHOOK_URL;
+  if (!webhookUrl) { console.log('  ⚠️  No MAKE_WEBHOOK_URL set'); return false; }
   try {
-    const res = await safeFetch("https://api.bufferapp.com/graphql", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        query: `{ channels { id name service serviceType } }`
-      })
+    const res = await safeFetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: caption, title, category, imageUrl, siteUrl: SITE_URL })
     });
-    if (!res) return [];
-    const data = await res.json();
-    const channels = data?.data?.channels || [];
-    if (channels.length > 0) {
-      console.log(`  ✅ Buffer channels: ${channels.map((c:any)=>c.service).join(", ")}`);
-      return channels;
-    }
-    console.log("  ⚠️  Buffer GraphQL returned no channels");
-    return [];
-  } catch (e) { console.error("  Buffer profile fetch error:", e); return []; }
-}
-
-async function postToBuffer(text: string, profileIds: string[]): Promise<boolean> {
-  const token = process.env.BUFFER_ACCESS_TOKEN;
-  if (!token || !profileIds.length) return false;
-  try {
-    // Post to each channel via GraphQL
-    let anySuccess = false;
-    for (const channelId of profileIds) {
-      const res = await safeFetch("https://api.bufferapp.com/graphql", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          query: `
-            mutation CreatePost($input: CreatePostInput!) {
-              createPost(input: $input) {
-                post { id status text }
-                errors { message }
-              }
-            }
-          `,
-          variables: {
-            input: {
-              channelId,
-              text: text.substring(0, 500),
-              publishing: { publishNow: true }
-            }
-          }
-        })
-      });
-      if (!res) continue;
-      const data = await res.json();
-      console.log(`  📊 Buffer GraphQL response:`, JSON.stringify(data).substring(0, 200));
-      const post = data?.data?.createPost?.post;
-      const errors = data?.data?.createPost?.errors;
-      if (post?.id) anySuccess = true;
-      if (errors?.length) console.log(`  ⚠️  Buffer error: ${errors[0]?.message}`);
-    }
-    return anySuccess;
-  } catch (e) { console.error("  Buffer post error:", e); return false; }
+    if (res) { console.log('  ✅ Make.com webhook triggered!'); return true; }
+    return false;
+  } catch (e) { console.error('  Make.com error:', e); return false; }
 }
 
 async function runPhase4(): Promise<number> {
-  console.log("📱 [Phase 4] Social Publisher (Buffer) starting...");
-  const bufferToken = process.env.BUFFER_ACCESS_TOKEN;
-  if (!bufferToken) { console.log("  ⚠️  No BUFFER_ACCESS_TOKEN"); return 0; }
+  console.log('📱 [Phase 4] Social Publisher (Make.com) starting...');
+  if (!process.env.MAKE_WEBHOOK_URL) { console.log('  ⚠️  No MAKE_WEBHOOK_URL in Render environment'); return 0; }
 
-  const profiles = await getBufferProfiles();
-  if (!profiles.length) { console.log("  ⚠️  No Buffer profiles — check token"); return 0; }
-  const profileIds = profiles.map((p: any) => p.id);
+  const { data: articles } = await getSupabase().from('articles')
+    .select('*').eq('published', true)
+    .order('created_at', { ascending: false }).limit(10);
 
-  // Get latest articles (NOT filtered by today)
-  const { data: articles } = await getSupabase().from("articles")
-    .select("*").eq("published", true)
-    .order("created_at", { ascending: false }).limit(10);
-
-  if (!articles?.length) { console.log("  ℹ️  No articles in Supabase"); return 0; }
+  if (!articles?.length) { console.log('  ℹ️  No articles in Supabase yet'); return 0; }
 
   let posted = 0;
   for (const article of articles) {
     if (posted >= 3) break;
-    const { data: existing } = await getSupabase().from("social_posts")
-      .select("id").eq("article_id", article.id).eq("platform", "buffer").limit(1);
-    if (existing?.length) continue;
+    const { data: existing } = await getSupabase().from('social_posts')
+      .select('id').eq('article_id', article.id).eq('platform', 'make').limit(1);
+    if (existing?.length) { console.log(`  ⏭️  Already posted: ${article.title?.substring(0, 40)}`); continue; }
 
     try {
-      const prompt = `Write an engaging social media post for this pharma news. Max 250 characters. Include 3-4 relevant hashtags. End with the link.\n\nTitle: ${article.title}\nCategory: ${article.category}\nLink: ${SITE_URL}\n\nWrite ONLY the post text, nothing else.`;
-      const res = await getGemini().models.generateContent({ model: "gemini-2.0-flash", contents: prompt });
-      const caption = res.text?.trim() || `🔬 ${article.title}\n\n${SITE_URL}\n\n#PharmaNews #Healthcare`;
+      const prompt = `Write an engaging social media post for pharma news. Max 250 chars. Include 3 hashtags. End with: ${SITE_URL}
 
-      const success = await postToBuffer(caption, profileIds);
-      await getSupabase().from("social_posts").insert({
-        article_id: article.id, platform: "buffer", caption,
-        hashtags: (caption.match(/#\w+/g) || []).join(", "),
-        status: success ? "posted" : "failed",
+Title: ${article.title}
+Category: ${article.category}
+Write ONLY the post text.`;
+      const res = await getGemini().models.generateContent({ model: 'gemini-2.0-flash', contents: prompt });
+      const caption = res.text?.trim() || `🔬 ${article.title}
+
+${SITE_URL}
+
+#PharmaNews #Healthcare #FDA`;
+
+      const success = await postToMakeWebhook(caption, article.title || '', article.category || '', article.image_url || '');
+
+      await getSupabase().from('social_posts').insert({
+        article_id: article.id, platform: 'make', caption,
+        hashtags: (caption.match(/#\w+/g) || []).join(', '),
+        status: success ? 'posted' : 'failed',
         post_url: SITE_URL, posted_at: new Date().toISOString()
       });
 
-      if (success) { posted++; console.log(`  ✅ Posted: ${article.title?.substring(0, 50)}...`); }
-      else { console.log(`  ❌ Failed: ${article.title?.substring(0, 50)}...`); }
-    } catch (e) { console.error("  Social error:", e); }
+      if (success) { posted++; console.log(`  ✅ Posted: ${article.title?.substring(0, 50)}`); }
+    } catch (e) { console.error('  Social error:', e); }
     await new Promise(r => setTimeout(r, 2000));
   }
 
-  await logAgent("Phase4-SocialPublisher", "success", `Posted ${posted} to Buffer`, posted);
+  await logAgent('Phase4-SocialPublisher', 'success', `Posted ${posted} via Make.com`, posted);
   console.log(`✅ [Phase 4] Done — ${posted} posts published!`);
   return posted;
 }
 
-
-// ── PHASE 5: NEWSLETTER ────────────────────────────────────
 async function buildNewsletterHTML(articles: any[]): Promise<{subject: string, html: string}> {
   const date = new Date().toLocaleDateString("en-IN", { weekday:"long", year:"numeric", month:"long", day:"numeric" });
   let intro = "Welcome to this week's most important pharmaceutical developments, curated and summarized by our AI agents.";
