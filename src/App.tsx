@@ -1386,10 +1386,20 @@ export default function App() {
                     </h3>
                     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                       {[
-                        { label:"Trigger News Fetch",   desc:"Fetch latest pharma news now",   action: () => triggerAgent(), color:"bg-emerald-600 hover:bg-emerald-700" },
-                        { label:"View Sitemap",         desc:"Check Google sitemap",            action: () => window.open("/sitemap.xml","_blank"), color:"bg-blue-600 hover:bg-blue-700" },
-                        { label:"Google News Sitemap",  desc:"Submit to Google News",           action: () => window.open("/news-sitemap.xml","_blank"), color:"bg-purple-600 hover:bg-purple-700" },
-                        { label:"Check Robots.txt",     desc:"View crawl rules",                action: () => window.open("/robots.txt","_blank"), color:"bg-slate-700 hover:bg-slate-600" },
+                        { label:"Trigger AI Update",  desc:"Fetch fresh pharma news", action: () => triggerAgent(), color:"bg-emerald-600 hover:bg-emerald-700" },
+                        { label:"Post to Social",     desc:"LinkedIn + Facebook now", action: () => fetch('/api/agents/trigger-social',{method:'POST'}).then(r=>r.json()).then(d=>alert(d.success?'✅ Posted!':'❌ '+d.error)), color:"bg-purple-600 hover:bg-purple-700" },
+                        { label:"Copy Tweet",         desc:"Copy latest article for Twitter", action: async () => {
+                          const latest = articles[0];
+                          if (!latest) return alert('No articles found');
+                          const tweet = `🔬 ${latest.title}\n\n${latest.summary?.substring(0,100)}...\n\nRead more: https://pharmanews.co.in\n\n#PharmaNews #Healthcare #FDA #Pharma`;
+                          await navigator.clipboard.writeText(tweet);
+                          alert('✅ Tweet copied! Go paste it on twitter.com/compose/tweet');
+                        }, color:"bg-sky-600 hover:bg-sky-700" },
+                        { label:"View Sitemap",       desc:"Check Google sitemap", action: () => window.open("/sitemap.xml","_blank"), color:"bg-blue-600 hover:bg-blue-700" },
+                        { label:"Google News XML",    desc:"Submit to Google News", action: () => window.open("/news-sitemap.xml","_blank"), color:"bg-orange-600 hover:bg-orange-700" },
+                        { label:"Check Robots.txt",   desc:"View crawl rules", action: () => window.open("/robots.txt","_blank"), color:"bg-slate-700 hover:bg-slate-600" },
+                        { label:"Open Supabase",      desc:"View database tables", action: () => window.open("https://supabase.com/dashboard","_blank"), color:"bg-green-700 hover:bg-green-600" },
+                        { label:"Open Make.com",      desc:"Check social scenarios", action: () => window.open("https://make.com","_blank"), color:"bg-rose-600 hover:bg-rose-700" },
                       ].map((action,i) => (
                         <button key={i} onClick={action.action}
                           className={`${action.color} text-white rounded-xl p-4 text-left transition-colors`}>
