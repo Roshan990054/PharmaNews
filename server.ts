@@ -995,51 +995,56 @@ app.post("/api/auto-news/refresh", async (req, res) => {
   }
 });
 
-// Manual trigger for social posting (for testing Buffer)
+// Manual trigger for social posting via Make.com webhook
 app.post("/api/agents/trigger-social", async (req, res) => {
   try {
-    const token = process.env.BUFFER_ACCESS_TOKEN;
-    if (!token) return res.json({ success: false, error: "No BUFFER_ACCESS_TOKEN set in Render environment" });
+    const webhookUrl = process.env.MAKE_WEBHOOK_URL;
+    if (!webhookUrl) {
+      return res.json({ success: false, error: "No MAKE_WEBHOOK_URL set in Render environment" });
+    }
 
-    // Test with Buffer GraphQL API
-    const gqlRes = await fetch("https://api.bufferapp.com/graphql", {
+    // Get latest published article
+    const { createClient } = await import("@supabase/supabase-js");
+    const supabase = createClient(
+      process.env.SUPABASE_URL || "",
+      process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+    );
+
+    const { data: articles } = await supabase
+      .from("articles")
+      .select("id, title, summary, category, image_url")
+      .eq("published", true)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const article = articles?.[0];
+    const SITE_URL = process.env.SITE_URL || "https://pharmanews.co.in";
+
+    const payload = {
+      title: article?.title || "Latest PharmaNews Update",
+      text: article
+        ? `🔬 ${article.title}\n\n${article.summary?.substring(0, 150)}...\n\nRead more: ${SITE_URL}\n\n#PharmaNews #Healthcare #FDA #Pharma`
+        : `Check out the latest pharmaceutical news at ${SITE_URL} #PharmaNews #Healthcare`,
+      imageUrl: article?.image_url || "",
+      siteUrl: SITE_URL,
+      category: article?.category || "Pharma News",
+      timestamp: new Date().toISOString()
+    };
+
+    const response = await fetch(webhookUrl, {
       method: "POST",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ query: `{ channels { id name service serviceType } }` })
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
     });
 
-    const gqlData = await gqlRes.json();
-    const channels = gqlData?.data?.channels || [];
-
-    if (gqlData.errors) {
-      return res.json({
-        success: false,
-        error: "Buffer GraphQL error",
-        details: gqlData.errors,
-        hint: "Your token may be expired. Go to buffer.com → Settings → Apps & Integrations → regenerate token"
-      });
-    }
-
-    if (!channels.length) {
-      return res.json({
-        success: false,
-        error: "No channels found in Buffer",
-        hint: "Go to buffer.com → Add a channel → reconnect Instagram/Twitter/LinkedIn"
-      });
-    }
+    const responseText = await response.text();
 
     res.json({
-      success: true,
-      message: `Buffer connected! Found ${channels.length} channels`,
-      channels: channels.map((c: any) => ({
-        id: c.id,
-        service: c.service,
-        name: c.name,
-        type: c.serviceType
-      }))
+      success: response.ok,
+      message: response.ok ? "Successfully sent to Make.com webhook" : "Make.com webhook returned an error",
+      status: response.status,
+      makeResponse: responseText,
+      payload
     });
   } catch (error) {
     res.json({ success: false, error: String(error) });
