@@ -1254,10 +1254,19 @@ export default function App() {
                 <h2 className="text-2xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
                   <Shield className="w-6 h-6 text-blue-600" /> Admin Control Center
                 </h2>
-                <button onClick={() => { setAdminStats(null); setAdminLoading(true); fetch("/api/admin/stats").then(r=>r.json()).then(d=>{setAdminStats(d);setAdminLoading(false);}); }}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
-                  <RefreshCw className={`w-4 h-4 ${adminLoading ? "animate-spin" : ""}`} /> Refresh
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => {
+                    fetch('/api/agents/trigger-social', {method:'POST'})
+                      .then(r=>r.json())
+                      .then(d => alert(d.success ? '✅ Social post triggered!' : '❌ ' + d.error));
+                  }} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors">
+                    <Share2 className="w-4 h-4" /> Post Now
+                  </button>
+                  <button onClick={() => { setAdminStats(null); setAdminLoading(true); fetch("/api/admin/stats").then(r=>r.json()).then(d=>{setAdminStats(d);setAdminLoading(false);}); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
+                    <RefreshCw className={`w-4 h-4 ${adminLoading ? "animate-spin" : ""}`} /> Refresh
+                  </button>
+                </div>
               </div>
 
               {adminLoading ? (
@@ -1283,26 +1292,88 @@ export default function App() {
                     ))}
                   </div>
 
+                  {/* Agent Performance Dashboard */}
+                  <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+                    <h3 className="font-bold text-slate-900 dark:text-white mb-5 flex items-center gap-2">
+                      <BarChart2 className="w-5 h-5 text-blue-600" /> Agent Performance Dashboard
+                      <span className="ml-auto text-xs text-emerald-500 font-mono flex items-center gap-1">
+                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse inline-block"/>LIVE
+                      </span>
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                      {[
+                        { name:"CEO Agent",       phase:"4:00 AM", key:"CEO-ExecutiveAgent"         },
+                        { name:"Trending Topics", phase:"4:30 AM", key:"Phase8-TrendingTopics"       },
+                        { name:"News Collector",  phase:"5:00 AM", key:"Phase1-NewsCollector"        },
+                        { name:"Article Writer",  phase:"5:30 AM", key:"Phase2-ArticleWriter"        },
+                        { name:"Image Agent",     phase:"5:45 AM", key:"Phase9-ImageEnhancement"     },
+                        { name:"SEO Optimizer",   phase:"6:00 AM", key:"Phase3-SEOOptimizer"         },
+                        { name:"Fact Checker",    phase:"6:30 AM", key:"Phase7-FactChecker"          },
+                        { name:"Translator",      phase:"6:45 AM", key:"Phase10-Translation"         },
+                        { name:"Social Publisher",phase:"7:00 AM", key:"Phase4-SocialPublisher"      },
+                        { name:"Newsletter",      phase:"8:00 AM", key:"Phase5-Newsletter"           },
+                        { name:"Competitor Intel",phase:"9:00 AM", key:"Phase6-CompetitorIntel"      },
+                      ].map(agent => {
+                        const log = adminStats?.agentLogs?.find((l:any) => l.agent_name === agent.key);
+                        const score = log ? (log.status === "success" ? 100 : 40) : 0;
+                        const statusColor = score === 100 ? "text-emerald-500" : score === 40 ? "text-amber-500" : "text-slate-400";
+                        const barColor = score === 100 ? "bg-emerald-500" : score === 40 ? "bg-amber-500" : "bg-slate-300 dark:bg-slate-700";
+                        return (
+                          <div key={agent.key} className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <span className="text-sm font-bold text-slate-900 dark:text-white">{agent.name}</span>
+                                <span className="text-xs text-slate-400 ml-2 font-mono">{agent.phase} IST</span>
+                              </div>
+                              <span className={`text-xs font-bold ${statusColor}`}>
+                                {score === 100 ? "✅ OK" : score === 40 ? "⚠️ WARN" : "⚫ IDLE"}
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5">
+                              <div className={`${barColor} h-1.5 rounded-full transition-all duration-700`} style={{width:`${score}%`}}/>
+                            </div>
+                            {log && (
+                              <div className="flex items-center justify-between mt-1.5">
+                                <span className="text-[10px] text-slate-400 truncate">{log.message?.substring(0,40)}</span>
+                                <span className="text-[10px] text-slate-400 flex-none ml-2">{new Date(log.ran_at).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Overall health */}
+                    <div className="flex items-center gap-4 p-4 bg-slate-900 dark:bg-black rounded-xl">
+                      <div className="text-center">
+                        <div className="text-3xl font-black text-white">
+                          {adminStats?.agentLogs ? Math.round(adminStats.agentLogs.filter((l:any) => l.status==="success").length / Math.max(adminStats.agentLogs.length,1) * 100) : 0}%
+                        </div>
+                        <div className="text-[10px] text-slate-400 uppercase tracking-wider">Health</div>
+                      </div>
+                      <div className="flex-1 space-y-1 font-mono text-xs">
+                        <div className="text-emerald-400">✅ {adminStats?.agentLogs?.filter((l:any)=>l.status==="success").length || 0} successful runs today</div>
+                        <div className="text-red-400">❌ {adminStats?.agentLogs?.filter((l:any)=>l.status==="error").length || 0} errors today</div>
+                        <div className="text-slate-400">📊 {adminStats?.articles || 0} total articles • {adminStats?.subscribers || 0} subscribers</div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Agent Logs */}
                   <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
                     <h3 className="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
                       <Terminal className="w-5 h-5 text-emerald-600" /> Live Agent Logs
-                      <span className="ml-auto text-xs text-emerald-500 font-mono flex items-center gap-1">
-                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse inline-block" /> RUNNING
-                      </span>
                     </h3>
                     <div className="bg-slate-950 rounded-xl p-5 font-mono text-xs space-y-1.5 max-h-80 overflow-y-auto">
-                      {adminStats.agentLogs?.length === 0 ? (
+                      {adminStats?.agentLogs?.length === 0 ? (
                         <span className="text-slate-500">No agent logs yet. Agents run daily at 4-9 AM IST.</span>
-                      ) : adminStats.agentLogs?.map((log: any, i: number) => (
+                      ) : adminStats?.agentLogs?.map((log: any, i: number) => (
                         <div key={i} className="flex items-start gap-3">
-                          <span className="text-slate-500 flex-none w-32">{new Date(log.ran_at).toLocaleTimeString("en-IN")}</span>
-                          <span className={`flex-none font-bold w-8 ${log.status === "success" ? "text-emerald-400" : "text-red-400"}`}>
-                            {log.status === "success" ? "✅" : "❌"}
-                          </span>
-                          <span className="text-blue-400 flex-none w-40">[{log.agent_name}]</span>
-                          <span className="text-slate-300">{log.message}</span>
-                          {log.articles_processed > 0 && <span className="text-amber-400 ml-auto flex-none">{log.articles_processed} items</span>}
+                          <span className="text-slate-500 flex-none w-20">{new Date(log.ran_at).toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"})}</span>
+                          <span className={`flex-none w-5 ${log.status === "success" ? "text-emerald-400" : "text-red-400"}`}>{log.status === "success" ? "✅" : "❌"}</span>
+                          <span className="text-blue-400 flex-none w-36 truncate">[{log.agent_name}]</span>
+                          <span className="text-slate-300 flex-1 truncate">{log.message}</span>
+                          {log.articles_processed > 0 && <span className="text-amber-400 flex-none">{log.articles_processed}</span>}
                         </div>
                       ))}
                     </div>
