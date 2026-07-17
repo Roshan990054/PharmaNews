@@ -95,12 +95,23 @@ export default function App() {
     return "";
   });
   const [articles, setArticles] = useState<Article[]>([]);
+  const [user, setUser] = useState<{email:string;name:string}|null>(() => {
+    try { const u = localStorage.getItem("pn_user"); return u ? JSON.parse(u) : null; } catch { return null; }
+  });
+  const [authModal, setAuthModal] = useState<"login"|"register"|null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [authInfo, setAuthInfo] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedArticle, setSelectedArticle] = useState<Article|null>(null);
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [catDropOpen, setCatDropOpen] = useState(false);
   const [newsletterEmail, setNewsletterEmail] = useState("");
   const [newsletterDone, setNewsletterDone] = useState(false);
@@ -119,13 +130,9 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   const [adminStats, setAdminStats] = useState<any>(null);
   const [adminLoading, setAdminLoading] = useState(false);
-  // #8 — Reading progress bar
   const [readProgress, setReadProgress] = useState(0);
-  // #5 — Search filters
   const [searchFilter, setSearchFilter] = useState("All");
   const [searchSort, setSearchSort] = useState<"recent"|"relevant">("recent");
-  // #2 — Mobile menu search
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const PER_PAGE = 8;
 
@@ -154,6 +161,52 @@ export default function App() {
   const navigate = useCallback((newPage: string, extra = "") => {
     setPage(newPage);
     window.location.hash = extra || newPage;
+  }, []);
+
+  // Auth functions
+  const handleAuth = async (type: "login"|"register") => {
+    setAuthLoading(true); setAuthError(""); setAuthInfo("");
+    try {
+      const endpoint = type === "register" ? "/api/auth/register" : "/api/auth/login";
+      const body = type === "register"
+        ? { email: authEmail, password: authPassword, name: authName }
+        : { email: authEmail, password: authPassword };
+      const res = await fetch(endpoint, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!data.success) { setAuthError(data.error || "Something went wrong"); return; }
+
+      // If email confirmation is required, don't log in yet — show message and switch to login
+      if (data.needsConfirmation) {
+        setAuthInfo(data.message || "Please check your email to confirm your account.");
+        setAuthModal("login");
+        setAuthPassword("");
+        return;
+      }
+
+      if (data.token) { try { localStorage.setItem("pn_token", data.token); } catch {} }
+      setUser(data.user);
+      try { localStorage.setItem("pn_user", JSON.stringify(data.user)); } catch {}
+      setAuthModal(null);
+      setAuthEmail(""); setAuthPassword(""); setAuthName("");
+    } catch (e) { setAuthError("Connection error. Try again."); }
+    finally { setAuthLoading(false); }
+  };
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method:"POST" });
+    try { localStorage.removeItem("pn_token"); localStorage.removeItem("pn_user"); } catch {}
+    setUser(null);
+  };
+
+  // Restore session on mount
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem("pn_token");
+      if (token) {
+        fetch("/api/auth/user", { headers:{ "Authorization": `Bearer ${token}` } })
+          .then(r => r.json()).then(d => { if (d.success) setUser(d.user); });
+      }
+    } catch {}
   }, []);
 
   const openArticle = useCallback((article: Article) => {
@@ -212,6 +265,7 @@ export default function App() {
       fetch("/api/admin/stats").then(r => r.json()).then(d => { setAdminStats(d); setAdminLoading(false); }).catch(() => setAdminLoading(false));
     }
   }, [page]);
+
 
   // #5 — Search with filters
   const getFilteredSearch = () => {
@@ -505,6 +559,48 @@ export default function App() {
     <div className={theme === "dark" ? "dark" : ""}>
       <div className="min-h-screen bg-slate-50 dark:bg-[#060d1a] text-slate-900 dark:text-slate-100 font-sans">
 
+        {/* Auth Modal */}
+        {authMode && (
+          <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-700">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  {authMode === "login" ? "Sign In" : "Create Account"}
+                </h2>
+                <button onClick={() => { setAuthMode(null); setAuthError(""); }} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"><X className="w-5 h-5" /></button>
+              </div>
+              <form onSubmit={handleAuth} className="space-y-4">
+                {authMode === "register" && (
+                  <input value={authName} onChange={e => setAuthName(e.target.value)}
+                    placeholder="Your name" required
+                    className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
+                )}
+                <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)}
+                  placeholder="Email address" required
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
+                <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)}
+                  placeholder="Password (min 6 characters)" required minLength={6}
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
+                {authError && <p className="text-red-500 text-sm">{authError}</p>}
+                <button type="submit" disabled={authLoading}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl font-bold transition-colors">
+                  {authLoading ? "Please wait..." : authMode === "login" ? "Sign In" : "Create Account"}
+                </button>
+                <p className="text-center text-sm text-slate-500">
+                  {authMode === "login" ? "Don't have an account? " : "Already have an account? "}
+                  <button type="button" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}
+                    className="text-blue-600 font-medium hover:underline">
+                    {authMode === "login" ? "Sign up free" : "Sign in"}
+                  </button>
+                </p>
+                {authMode === "register" && (
+                  <p className="text-xs text-slate-400 text-center">Get weekly pharma digest + save bookmarks across devices</p>
+                )}
+              </form>
+            </div>
+          </div>
+        )}
+
         {/* ── STOCK TICKER ── */}
         <div className="bg-slate-900 dark:bg-black border-b border-slate-800 py-1.5 overflow-hidden">
           <div className="flex animate-marquee whitespace-nowrap gap-8">
@@ -555,9 +651,21 @@ export default function App() {
 
               {/* Right Actions */}
               <div className="flex items-center gap-2 ml-auto">
-                <button className="hidden lg:flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors">
+                <button className="hidden lg:flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors"
+                  onClick={() => user ? navigate("dashboard") : setAuthModal("register")}>
                   <Rss className="w-3.5 h-3.5" /> Subscribe
                 </button>
+                {user ? (
+                  <div className="hidden lg:flex items-center gap-2">
+                    <span className="text-sm text-slate-600 dark:text-slate-400 font-medium">👋 {user.name}</span>
+                    <button onClick={handleLogout} className="text-xs text-slate-400 hover:text-red-500 transition-colors">Sign out</button>
+                  </div>
+                ) : (
+                  <button onClick={() => setAuthModal("login")}
+                    className="hidden lg:flex items-center gap-1.5 px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-400 hover:border-blue-500 hover:text-blue-600 transition-colors">
+                    Sign In
+                  </button>
+                )}
                 <button onClick={() => setTheme(t => t === "dark" ? "light" : "dark")} className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                   {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
                 </button>
@@ -592,6 +700,45 @@ export default function App() {
             </nav>
           </div>
         </header>
+
+        {/* Auth Modal */}
+        {authMode && (
+          <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4" onClick={() => setAuthMode(null)}>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
+                  {authMode === "login" ? "Sign In" : "Create Account"}
+                </h2>
+                <button onClick={() => setAuthMode(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+              </div>
+              <form onSubmit={handleAuth} className="space-y-4">
+                {authMode === "register" && (
+                  <input value={authName} onChange={e => setAuthName(e.target.value)}
+                    placeholder="Your name" type="text"
+                    className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
+                )}
+                <input value={authEmail} onChange={e => setAuthEmail(e.target.value)}
+                  placeholder="Email address" type="email" required
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
+                <input value={authPassword} onChange={e => setAuthPassword(e.target.value)}
+                  placeholder="Password" type="password" required minLength={6}
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
+                {authError && <p className="text-red-500 text-sm">{authError}</p>}
+                <button type="submit" disabled={authLoading}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl font-bold transition-colors">
+                  {authLoading ? "Please wait..." : authMode === "login" ? "Sign In" : "Create Account"}
+                </button>
+              </form>
+              <p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-4">
+                {authMode === "login" ? "Don't have an account? " : "Already have an account? "}
+                <button onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}
+                  className="text-blue-600 dark:text-blue-400 font-semibold hover:underline">
+                  {authMode === "login" ? "Sign Up" : "Sign In"}
+                </button>
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
@@ -1449,6 +1596,40 @@ export default function App() {
             </div>
           )}
         </main>
+
+        {/* ── AUTH MODAL ── */}
+        {authModal && (
+          <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4" onClick={() => { setAuthModal(null); setAuthError(""); setAuthInfo(""); }}>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{authModal === "login" ? "Sign In" : "Create Account"}</h2>
+                <button onClick={() => { setAuthModal(null); setAuthError(""); setAuthInfo(""); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+              </div>
+              {authInfo && <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-700 dark:text-emerald-400 text-sm">{authInfo}</div>}
+              {authError && <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">{authError}</div>}
+              <div className="space-y-3">
+                {authModal === "register" && (
+                  <input value={authName} onChange={e => setAuthName(e.target.value)} placeholder="Your name"
+                    className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500"/>
+                )}
+                <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)} placeholder="Email address"
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500"/>
+                <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)} placeholder="Password"
+                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500"/>
+                <button onClick={() => handleAuth(authModal)} disabled={authLoading}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-xl font-bold transition-colors">
+                  {authLoading ? "Please wait..." : authModal === "login" ? "Sign In" : "Create Account"}
+                </button>
+              </div>
+              <p className="text-center text-sm text-slate-500 mt-4">
+                {authModal === "login" ? "Don't have an account? " : "Already have an account? "}
+                <button onClick={() => setAuthModal(authModal === "login" ? "register" : "login")} className="text-blue-600 font-medium hover:underline">
+                  {authModal === "login" ? "Register" : "Sign In"}
+                </button>
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── FOOTER ── */}
         <footer className="mt-16 bg-slate-900 dark:bg-black border-t border-slate-800">
