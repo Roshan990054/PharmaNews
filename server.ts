@@ -1053,10 +1053,9 @@ app.post("/api/agents/trigger-social", async (req, res) => {
 
 
 // ============================================================
-// NEWSLETTER, BOOKMARKS, AGENT STATUS — Complete API Suite
 // ============================================================
+// (Auth routes consolidated below — see AUTH ROUTES section near end of file)
 
-// Newsletter subscribe
 app.post("/api/newsletter/subscribe", async (req, res) => {
   const { email, name } = req.body;
   if (!email) return res.json({ success: false, error: "Email required" });
@@ -1543,6 +1542,83 @@ app.get("/api/admin/stats", async (req, res) => {
       lastUpdated: new Date().toISOString()
     });
   } catch (e) { res.json({ error: String(e) }); }
+});
+
+// ── AUTH ROUTES ──────────────────────────────────────────
+const getSupabaseClient = async () => {
+  const { createClient } = await import("@supabase/supabase-js");
+  return createClient(
+    process.env.SUPABASE_URL || "",
+    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_ANON_KEY || ""
+  );
+};
+
+app.post("/api/auth/register", async (req, res) => {
+  const { email, password, name } = req.body;
+  if (!email || !password) return res.json({ success: false, error: "Email and password required" });
+  if (password.length < 6) return res.json({ success: false, error: "Password must be at least 6 characters" });
+  try {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name } } });
+    if (error) {
+      const friendly = error.message.includes("already registered") || error.message.includes("already exists")
+        ? "This email is already registered. Please sign in instead."
+        : error.message;
+      return res.json({ success: false, error: friendly });
+    }
+    // Save to subscribers automatically
+    await supabase.from("subscribers").upsert({ email, name: name || "", active: true, subscribed_at: new Date().toISOString() }, { onConflict: "email" });
+
+    const needsConfirmation = !data.session;
+    res.json({
+      success: true,
+      user: { id: data.user?.id, email: data.user?.email, name },
+      token: data.session?.access_token,
+      needsConfirmation,
+      message: needsConfirmation ? "Account created! Please check your email to confirm before signing in." : "Account created successfully!"
+    });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const { email, password } = req.body;
+  if (!email || !password) return res.json({ success: false, error: "Email and password required" });
+  try {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      const friendly = error.message.includes("Invalid login credentials")
+        ? "Incorrect email or password."
+        : error.message.includes("Email not confirmed")
+        ? "Please confirm your email before signing in. Check your inbox."
+        : error.message;
+      return res.json({ success: false, error: friendly });
+    }
+    res.json({
+      success: true,
+      user: { id: data.user?.id, email: data.user?.email, name: data.user?.user_metadata?.name || data.user?.email?.split("@")[0] },
+      token: data.session?.access_token
+    });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
+});
+
+app.post("/api/auth/logout", async (req, res) => {
+  try {
+    const supabase = await getSupabaseClient();
+    await supabase.auth.signOut();
+    res.json({ success: true });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
+});
+
+app.get("/api/auth/user", async (req, res) => {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) return res.json({ success: false, error: "No token" });
+  try {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error) return res.json({ success: false, error: error.message });
+    res.json({ success: true, user: { id: data.user?.id, email: data.user?.email, name: data.user?.user_metadata?.name || data.user?.email?.split("@")[0] } });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
 });
 
 // Vite middleware setup
