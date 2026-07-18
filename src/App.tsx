@@ -125,7 +125,9 @@ export default function App() {
   const [aiSummary, setAiSummary] = useState("");
   const [aiSumLoading, setAiSumLoading] = useState(false);
   const [articleView, setArticleView] = useState<"full"|"ai">("full");
-  const [bookmarks, setBookmarks] = useState<string[]>([]);
+  const [bookmarks, setBookmarks] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("pn_bookmarks") || "[]"); } catch { return []; }
+  });
   const [currentPage, setCurrentPage] = useState(1);
   const [copied, setCopied] = useState(false);
   const [adminStats, setAdminStats] = useState<any>(null);
@@ -197,6 +199,49 @@ export default function App() {
     try { localStorage.removeItem("pn_token"); localStorage.removeItem("pn_user"); } catch {}
     setUser(null);
   };
+
+  // #37 — Toggle bookmark: syncs to Supabase when logged in, localStorage always
+  const toggleBookmark = useCallback((articleId: string) => {
+    setBookmarks(prev => {
+      const isBookmarked = prev.includes(articleId);
+      const next = isBookmarked ? prev.filter(b => b !== articleId) : [...prev, articleId];
+      try { localStorage.setItem("pn_bookmarks", JSON.stringify(next)); } catch {}
+
+      // Sync to server if logged in
+      const token = (() => { try { return localStorage.getItem("pn_token"); } catch { return null; } })();
+      if (token) {
+        if (isBookmarked) {
+          fetch(`/api/bookmarks/${articleId}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } }).catch(() => {});
+        } else {
+          fetch("/api/bookmarks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+            body: JSON.stringify({ articleId })
+          }).catch(() => {});
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  // Load bookmarks from Supabase when user logs in — merge with local
+  useEffect(() => {
+    if (!user) return;
+    const token = (() => { try { return localStorage.getItem("pn_token"); } catch { return null; } })();
+    if (!token) return;
+    fetch("/api/bookmarks", { headers: { "Authorization": `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success && Array.isArray(d.bookmarks)) {
+          setBookmarks(prev => {
+            const merged = Array.from(new Set([...prev, ...d.bookmarks]));
+            try { localStorage.setItem("pn_bookmarks", JSON.stringify(merged)); } catch {}
+            return merged;
+          });
+        }
+      })
+      .catch(() => {});
+  }, [user]);
 
   // Restore session on mount
   useEffect(() => {
@@ -400,7 +445,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               {/* Reading progress text */}
               <span className="text-xs font-mono text-slate-400 hidden md:block">{readProgress}% read</span>
-              <button onClick={() => setBookmarks(p => p.includes(selectedArticle.id) ? p.filter(b => b !== selectedArticle.id) : [...p, selectedArticle.id])}
+              <button onClick={() => toggleBookmark(selectedArticle.id)}
                 className={`p-2 rounded-full transition-colors ${bookmarks.includes(selectedArticle.id) ? "text-blue-600 bg-blue-50 dark:bg-blue-900/20" : "text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"}`}>
                 <Bookmark className="w-4 h-4" fill={bookmarks.includes(selectedArticle.id) ? "currentColor" : "none"} />
               </button>
@@ -938,7 +983,7 @@ export default function App() {
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{article.readTime}</span>
-                                  <button onClick={e => { e.stopPropagation(); setBookmarks(p => p.includes(article.id) ? p.filter(b=>b!==article.id) : [...p,article.id]); }}
+                                  <button onClick={e => { e.stopPropagation(); toggleBookmark(article.id); }}
                                     className={`${bookmarks.includes(article.id) ? "text-blue-600" : "text-slate-400"} hover:text-blue-600 transition-colors`}>
                                     <Bookmark className="w-3.5 h-3.5" fill={bookmarks.includes(article.id) ? "currentColor" : "none"} />
                                   </button>
