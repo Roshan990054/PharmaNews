@@ -1621,6 +1621,68 @@ app.get("/api/auth/user", async (req, res) => {
   } catch (e) { res.json({ success: false, error: String(e) }); }
 });
 
+// ============================================================
+// BOOKMARKS — Synced to Supabase per logged-in user
+// ============================================================
+
+// Helper: verify token and get user id
+async function getUserFromToken(req: any): Promise<string | null> {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) return null;
+  try {
+    const supabase = await getSupabaseClient();
+    const { data } = await supabase.auth.getUser(token);
+    return data.user?.id || null;
+  } catch { return null; }
+}
+
+// Get all bookmarks for logged-in user
+app.get("/api/bookmarks", async (req, res) => {
+  const userId = await getUserFromToken(req);
+  if (!userId) return res.json({ success: false, error: "Not logged in", bookmarks: [] });
+  try {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from("bookmarks")
+      .select("article_id")
+      .eq("user_id", userId);
+    if (error) return res.json({ success: false, error: error.message, bookmarks: [] });
+    res.json({ success: true, bookmarks: (data || []).map((b: any) => b.article_id) });
+  } catch (e) { res.json({ success: false, error: String(e), bookmarks: [] }); }
+});
+
+// Add a bookmark
+app.post("/api/bookmarks", async (req, res) => {
+  const userId = await getUserFromToken(req);
+  if (!userId) return res.json({ success: false, error: "Not logged in" });
+  const { articleId } = req.body;
+  if (!articleId) return res.json({ success: false, error: "articleId required" });
+  try {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from("bookmarks")
+      .upsert({ user_id: userId, article_id: articleId, created_at: new Date().toISOString() }, { onConflict: "user_id,article_id" });
+    if (error) return res.json({ success: false, error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
+});
+
+// Remove a bookmark
+app.delete("/api/bookmarks/:articleId", async (req, res) => {
+  const userId = await getUserFromToken(req);
+  if (!userId) return res.json({ success: false, error: "Not logged in" });
+  try {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from("bookmarks")
+      .delete()
+      .eq("user_id", userId)
+      .eq("article_id", req.params.articleId);
+    if (error) return res.json({ success: false, error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
+});
+
 // Vite middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
