@@ -306,6 +306,16 @@ export default function App() {
     setReadProgress(0);
     window.location.hash = `article/${article.id}`;
     window.scrollTo(0, 0);
+
+    // #39 — Real view counter: increment on server, update displayed count
+    fetch(`/api/articles/${article.id}/view`, { method: "POST" })
+      .then(r => r.json())
+      .then(d => {
+        if (d.success) {
+          setSelectedArticle(prev => prev && prev.id === article.id ? { ...prev, views: d.views } : prev);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Fetch articles
@@ -344,7 +354,14 @@ export default function App() {
   useEffect(() => {
     if (urlArticleId && articles.length > 0) {
       const found = articles.find(a => a.id === urlArticleId);
-      if (found) { setSelectedArticle(found); setPage("article"); }
+      if (found) {
+        setSelectedArticle(found);
+        setPage("article");
+        fetch(`/api/articles/${found.id}/view`, { method: "POST" })
+          .then(r => r.json())
+          .then(d => { if (d.success) setSelectedArticle(prev => prev && prev.id === found.id ? { ...prev, views: d.views } : prev); })
+          .catch(() => {});
+      }
     }
   }, [urlArticleId, articles]);
 
@@ -530,7 +547,7 @@ export default function App() {
               <span className="font-medium text-slate-700 dark:text-slate-300">By {selectedArticle.author}{selectedArticle.authorRole ? `, ${selectedArticle.authorRole}` : ""}</span>
               <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />{selectedArticle.date}</span>
               <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{selectedArticle.readTime}</span>
-              <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{selectedArticle.views || Math.floor(Math.random()*800+200)} views</span>
+              <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{(selectedArticle.views || 0).toLocaleString("en-IN")} views</span>
               <span className="flex items-center gap-1"><Globe className="w-3.5 h-3.5" />{selectedArticle.source}</span>
             </div>
 
