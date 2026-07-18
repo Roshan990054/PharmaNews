@@ -139,7 +139,10 @@ export default function App() {
   const [adminLoading, setAdminLoading] = useState(false);
   const [readProgress, setReadProgress] = useState(0);
   const [searchFilter, setSearchFilter] = useState("All");
-  const [searchSort, setSearchSort] = useState<"recent"|"relevant">("recent");
+  const [searchSort, setSearchSort] = useState<"recent"|"relevant">("relevant");
+  const [searchResults, setSearchResults] = useState<Article[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchMode, setSearchMode] = useState("");
   const chatEndRef = useRef<HTMLDivElement>(null);
   const PER_PAGE = 8;
 
@@ -374,17 +377,23 @@ export default function App() {
   }, [page]);
 
 
-  // #5 — Search with filters
-  const getFilteredSearch = () => {
-    let results = articles.filter(a =>
-      a.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.summary?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      a.category?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    if (searchFilter !== "All") results = results.filter(a => a.category === searchFilter);
-    if (searchSort === "recent") results.sort((a,b) => b.date.localeCompare(a.date));
-    return results;
-  };
+  // #40 — Full-text search via Supabase (debounced server search)
+  useEffect(() => {
+    if (!searchQuery.trim()) { setSearchResults([]); setSearchMode(""); return; }
+    setSearchLoading(true);
+    const handle = setTimeout(() => {
+      const params = new URLSearchParams({ q: searchQuery, category: searchFilter, sort: searchSort });
+      fetch(`/api/search?${params.toString()}`)
+        .then(r => r.json())
+        .then(d => {
+          if (d.success) { setSearchResults(d.articles || []); setSearchMode(d.mode || ""); }
+          else setSearchResults([]);
+        })
+        .catch(() => setSearchResults([]))
+        .finally(() => setSearchLoading(false));
+    }, 350); // debounce
+    return () => clearTimeout(handle);
+  }, [searchQuery, searchFilter, searchSort]);
 
   // AI Chat
   const sendChat = async () => {
@@ -809,12 +818,11 @@ export default function App() {
                 <Search className="w-4 h-4 text-slate-400 flex-none" />
                 <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                   onFocus={() => setSearchOpen(true)} onBlur={() => setSearchOpen(false)}
-                  onKeyDown={e => e.key === "Enter" && fetchArticles(activeCategory, searchQuery)}
+                  onKeyDown={e => e.key === "Enter" && navigate("search")}
                   placeholder="Search pharma news, drugs, trials..."
                   className="bg-transparent flex-1 text-sm outline-none text-slate-900 dark:text-white placeholder-slate-400" />
-                <button onClick={() => fetchArticles(activeCategory, searchQuery)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-bold transition-colors"
-                  onKeyDown={e => e.key === "Enter" && navigate("search")}>
+                <button onClick={() => navigate("search")}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-bold transition-colors">
                   Search
                 </button>
               </div>
@@ -1346,7 +1354,8 @@ export default function App() {
                   <Search className="w-5 h-5 text-blue-600" />
                   {searchQuery ? `Results for "${searchQuery}"` : "Search PharmaNews"}
                 </h2>
-                {searchQuery && <span className="text-sm text-slate-500">({getFilteredSearch().length} results)</span>}
+                {searchQuery && !searchLoading && <span className="text-sm text-slate-500">({searchResults.length} results)</span>}
+                {searchLoading && <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />}
               </div>
 
               {/* Search Bar */}
@@ -1409,7 +1418,9 @@ export default function App() {
                     ))}
                   </div>
                 </div>
-              ) : getFilteredSearch().length === 0 ? (
+              ) : searchLoading ? (
+                <div className="flex justify-center py-20"><RefreshCw className="w-6 h-6 animate-spin text-blue-500" /></div>
+              ) : searchResults.length === 0 ? (
                 <div className="text-center py-20">
                   <Search className="w-12 h-12 text-slate-300 dark:text-slate-600 mx-auto mb-4" />
                   <h3 className="font-bold text-slate-700 dark:text-slate-300 mb-2">No results found for "{searchQuery}"</h3>
@@ -1418,7 +1429,10 @@ export default function App() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {getFilteredSearch().map(article => (
+                  {searchMode === "full-text" && (
+                    <p className="text-xs text-slate-400 flex items-center gap-1"><Zap className="w-3 h-3 text-emerald-500" /> Ranked by relevance</p>
+                  )}
+                  {searchResults.map(article => (
                     <div key={article.id} onClick={() => openArticle(article)}
                       className="group flex gap-4 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 p-4 cursor-pointer transition-all">
                       <img src={article.imageUrl} alt="" loading="lazy" className="w-32 h-24 object-cover rounded-lg flex-none hidden sm:block" />
