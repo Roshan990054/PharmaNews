@@ -7,7 +7,7 @@ import {
   ArrowUpRight, ArrowDownRight, Shield, Terminal, Check,
   Zap, Tag, Rss, Home, BarChart2, FlaskConical, ChevronRight,
   Bookmark, Copy, AlertCircle, Globe, Activity, Printer,
-  Filter, SlidersHorizontal, TrendingDown, Hash
+  Filter, SlidersHorizontal, TrendingDown, Hash, MessageSquare
 } from "lucide-react";
 import CapsuleLogo from "./CapsuleLogo";
 
@@ -105,6 +105,11 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authInfo, setAuthInfo] = useState("");
+  const [comments, setComments] = useState<any[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [commentPosting, setCommentPosting] = useState(false);
+  const [commentError, setCommentError] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedArticle, setSelectedArticle] = useState<Article|null>(null);
   const [activeCategory, setActiveCategory] = useState("All");
@@ -242,6 +247,46 @@ export default function App() {
       })
       .catch(() => {});
   }, [user]);
+
+  // #38 — Load comments when article opens
+  useEffect(() => {
+    if (!selectedArticle) { setComments([]); return; }
+    setCommentsLoading(true);
+    fetch(`/api/comments/${selectedArticle.id}`)
+      .then(r => r.json())
+      .then(d => setComments(d.success ? d.comments : []))
+      .catch(() => setComments([]))
+      .finally(() => setCommentsLoading(false));
+  }, [selectedArticle]);
+
+  const postComment = async () => {
+    if (!newComment.trim() || !selectedArticle) return;
+    if (!user) { setAuthModal("login"); return; }
+    setCommentPosting(true); setCommentError("");
+    try {
+      const token = (() => { try { return localStorage.getItem("pn_token"); } catch { return null; } })();
+      const res = await fetch("/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ articleId: selectedArticle.id, content: newComment, userName: user.name })
+      });
+      const data = await res.json();
+      if (!data.success) { setCommentError(data.error || "Could not post comment"); return; }
+      setComments(prev => [data.comment, ...prev]);
+      setNewComment("");
+    } catch { setCommentError("Connection error. Try again."); }
+    finally { setCommentPosting(false); }
+  };
+
+  const deleteComment = async (commentId: string) => {
+    const token = (() => { try { return localStorage.getItem("pn_token"); } catch { return null; } })();
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/comments/${commentId}`, { method: "DELETE", headers: { "Authorization": `Bearer ${token}` } });
+      const data = await res.json();
+      if (data.success) setComments(prev => prev.filter(c => c.id !== commentId));
+    } catch {}
+  };
 
   // Restore session on mount
   useEffect(() => {
@@ -531,6 +576,69 @@ export default function App() {
                 </div>
               </div>
             )}
+
+            {/* #38 — Comments Section */}
+            <div className="mt-10 pt-8 border-t border-slate-200 dark:border-slate-800">
+              <h3 className="font-bold text-slate-900 dark:text-white mb-5 flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-blue-600" /> Comments {comments.length > 0 && <span className="text-sm font-normal text-slate-400">({comments.length})</span>}
+              </h3>
+
+              {/* Post comment box */}
+              <div className="mb-6">
+                {user ? (
+                  <div className="flex gap-3">
+                    <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm flex-none">
+                      {user.name?.[0]?.toUpperCase() || "U"}
+                    </div>
+                    <div className="flex-1">
+                      <textarea value={newComment} onChange={e => setNewComment(e.target.value)}
+                        placeholder="Share your thoughts on this article..." rows={3} maxLength={1000}
+                        className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:border-blue-500 resize-none" />
+                      {commentError && <p className="text-red-500 text-xs mt-1">{commentError}</p>}
+                      <div className="flex items-center justify-between mt-2">
+                        <span className="text-xs text-slate-400">{newComment.length}/1000</span>
+                        <button onClick={postComment} disabled={commentPosting || !newComment.trim()}
+                          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg text-sm font-bold transition-colors">
+                          {commentPosting ? "Posting..." : "Post Comment"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4">
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Sign in to join the conversation</p>
+                    <button onClick={() => setAuthModal("login")} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700 transition-colors">Sign In</button>
+                  </div>
+                )}
+              </div>
+
+              {/* Comments list */}
+              {commentsLoading ? (
+                <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 animate-spin text-slate-400" /></div>
+              ) : comments.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-8">No comments yet. Be the first to share your thoughts!</p>
+              ) : (
+                <div className="space-y-5">
+                  {comments.map(c => (
+                    <div key={c.id} className="flex gap-3">
+                      <div className="w-9 h-9 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center font-bold text-sm flex-none">
+                        {c.user_name?.[0]?.toUpperCase() || "U"}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-slate-900 dark:text-white">{c.user_name}</span>
+                          <span className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString("en-IN", { day:"numeric", month:"short", year:"numeric" })}</span>
+                          {user?.id === c.user_id && (
+                            <button onClick={() => deleteComment(c.id)} className="text-xs text-red-400 hover:text-red-600 ml-auto transition-colors">Delete</button>
+                          )}
+                        </div>
+                        <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">{c.content}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </article>
 
           {/* Sidebar */}
