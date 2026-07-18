@@ -1683,6 +1683,85 @@ app.delete("/api/bookmarks/:articleId", async (req, res) => {
   } catch (e) { res.json({ success: false, error: String(e) }); }
 });
 
+// ============================================================
+// COMMENTS — Per-article comments, requires login to post
+// ============================================================
+
+// Get all comments for an article (public, no login needed)
+app.get("/api/comments/:articleId", async (req, res) => {
+  try {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from("comments")
+      .select("*")
+      .eq("article_id", req.params.articleId)
+      .order("created_at", { ascending: false });
+    if (error) return res.json({ success: false, error: error.message, comments: [] });
+    res.json({ success: true, comments: data || [] });
+  } catch (e) { res.json({ success: false, error: String(e), comments: [] }); }
+});
+
+// Post a new comment (requires login)
+app.post("/api/comments", async (req, res) => {
+  const userId = await getUserFromToken(req);
+  if (!userId) return res.json({ success: false, error: "Please sign in to comment" });
+  const { articleId, content, userName } = req.body;
+  if (!articleId || !content?.trim()) return res.json({ success: false, error: "Comment cannot be empty" });
+  if (content.length > 1000) return res.json({ success: false, error: "Comment too long (max 1000 characters)" });
+
+  try {
+    // Basic spam/moderation check via Gemini
+    let approved = true;
+    try {
+      const geminiKey = process.env.GEMINI_API_KEY;
+      if (geminiKey) {
+        const { GoogleGenAI } = await import("@google/genai");
+        const gemini = new GoogleGenAI({ apiKey: geminiKey });
+        const modRes = await gemini.models.generateContent({
+          model: "gemini-2.0-flash",
+          contents: `Is this comment on a pharma news article spam, abusive, or harmful? Comment: "${content}". Respond ONLY with JSON: {"safe": true or false}`,
+          config: { responseMimeType: "application/json" }
+        });
+        const result = JSON.parse(modRes.text?.replace(/```json|```/g, "").trim() || "{}");
+        approved = result.safe !== false;
+      }
+    } catch {}
+
+    if (!approved) return res.json({ success: false, error: "This comment was flagged and could not be posted" });
+
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase
+      .from("comments")
+      .insert({
+        article_id: articleId,
+        user_id: userId,
+        user_name: userName || "Anonymous",
+        content: content.trim(),
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+    if (error) return res.json({ success: false, error: error.message });
+    res.json({ success: true, comment: data });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
+});
+
+// Delete own comment
+app.delete("/api/comments/:commentId", async (req, res) => {
+  const userId = await getUserFromToken(req);
+  if (!userId) return res.json({ success: false, error: "Not logged in" });
+  try {
+    const supabase = await getSupabaseClient();
+    const { error } = await supabase
+      .from("comments")
+      .delete()
+      .eq("id", req.params.commentId)
+      .eq("user_id", userId); // Can only delete own comments
+    if (error) return res.json({ success: false, error: error.message });
+    res.json({ success: true });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
+});
+
 // Vite middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
