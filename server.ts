@@ -160,117 +160,113 @@ const LOCAL_ARTICLES: Article[] = [
 // Combine mock news and call Gemini for fresh real-time articles if key exists
 app.post("/api/news", async (req, res) => {
   const { category, search } = req.body;
-  const gemini = getGeminiClient();
-
-  if (!gemini) {
-    // If no API key or key is initial, filter local data
-    let filtered = [...LOCAL_ARTICLES];
-    if (category && category !== "All News" && category !== "All") {
-      filtered = filtered.filter(
-        (a) => a.category.toLowerCase() === category.toLowerCase()
-      );
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      filtered = filtered.filter(
-        (a) =>
-          a.title.toLowerCase().includes(q) ||
-          a.summary.toLowerCase().includes(q) ||
-          a.content.toLowerCase().includes(q)
-      );
-    }
-    return res.json({ articles: filtered, source: "mock-cache" });
-  }
-
   try {
-    // Build specific prompt asking Gemini to either generate news or filter existing
-    const categoryFilterPrompt = category ? `matching category "${category}"` : "";
-    const searchFilterPrompt = search ? `matching search keyword "${search}"` : "";
+    const supabase = await getSupabaseClient();
+    let query = supabase
+      .from("articles")
+      .select("*")
+      .eq("published", true)
+      .order("created_at", { ascending: false })
+      .limit(60);
 
-    const userPrompt = `You are a high-fidelity synthetic data generator for an advanced pharmaceutical news aggregator app called "PharmaNews". 
-Generate a list of 4 highly detailed, extremely realistic, professional pharmaceutical news articles ${categoryFilterPrompt} ${searchFilterPrompt}. 
-Each article must fit the interests of pharmacists, pharmacy students, researchers, drug discovery scientists, and biotech executives.
-
-Provide the response strictly in JSON format. Do not include markdown codeblocks or any enclosing wrapper except valid JSON. 
-The JSON must be an array of objects matching this exact structure:
-[
-  {
-    "id": "gemini_[unique_number]",
-    "title": "[A highly compelling and realistic pharmaceutical headline]",
-    "summary": "[A professional 1-2 sentence overview of the article]",
-    "content": "[Detailed news report of 3-4 paragraphs including scientific data, regulatory terms, endpoints, or market analytics]",
-    "category": "[Must be one of: 'Drug Approvals', 'Clinical Trials', 'Medical Research', 'Healthcare Policy', 'Industry News', 'COVID-19 Updates', 'Biotechnology', 'AI in Healthcare']",
-    "source": "[Realistic source name e.g. Clinical Trial Monitor, BioBusiness World, FDA Insights]",
-    "author": "[A realistic name, potentially Dr. or PhD]",
-    "date": "2026-06-19",
-    "imageUrl": "[A high quality Unsplash medical/lab image URL e.g. https://images.unsplash.com/photo-1576086213369-97a306d36557?q=80&w=800]",
-    "readTime": "4 min read",
-    "isBreaking": false,
-    "isFeatured": false
-  }
-]`;
-
-    const response = await gemini.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: userPrompt,
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
-
-    const textOutput = response.text?.trim() || "";
-    const generatedArticles = JSON.parse(textOutput);
-
-    // Merge or prioritize generated, keeping LOCAL_ARTICLES as foundational database
-    // Filter local articles using the same criteria
-    let localFiltered = [...LOCAL_ARTICLES];
     if (category && category !== "All News" && category !== "All") {
-      localFiltered = localFiltered.filter(
-        (a) => a.category.toLowerCase() === category.toLowerCase()
-      );
+      query = query.eq("category", category);
     }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    let results = data || [];
+
     if (search) {
       const q = search.toLowerCase();
-      localFiltered = localFiltered.filter(
-        (a) =>
-          a.title.toLowerCase().includes(q) ||
-          a.summary.toLowerCase().includes(q)
+      results = results.filter((a: any) =>
+        a.title?.toLowerCase().includes(q) ||
+        a.summary?.toLowerCase().includes(q) ||
+        a.content?.toLowerCase().includes(q)
       );
     }
 
-    // Combine and send
-    const combined = [...generatedArticles, ...localFiltered];
-    return res.json({ articles: combined, source: "gemini-ai" });
+    // Map Supabase rows to the shape the frontend expects
+    const mapped = results.map((a: any) => ({
+      id: a.id,
+      title: a.title,
+      summary: a.summary,
+      content: a.content,
+      category: a.category,
+      source: a.source,
+      author: a.author,
+      authorRole: a.author_role || "",
+      date: a.created_at ? new Date(a.created_at).toISOString().split("T")[0] : "",
+      imageUrl: a.image_url,
+      readTime: a.read_time || "3 min read",
+      views: a.views || 0,
+      isBreaking: a.is_breaking || false,
+      isFeatured: a.is_featured || false,
+      seo_title: a.seo_title,
+      seo_description: a.seo_description,
+      keywords: a.keywords
+    }));
 
+    // If Supabase has no articles yet (brand new deployment, agents haven't run), fall back to local seed data
+    if (mapped.length === 0) {
+      let filtered = [...LOCAL_ARTICLES];
+      if (category && category !== "All News" && category !== "All") {
+        filtered = filtered.filter((a) => a.category.toLowerCase() === category.toLowerCase());
+      }
+      if (search) {
+        const q = search.toLowerCase();
+        filtered = filtered.filter((a) => a.title.toLowerCase().includes(q) || a.summary.toLowerCase().includes(q));
+      }
+      return res.json({ articles: filtered, source: "local-seed-fallback" });
+    }
+
+    res.json({ articles: mapped, source: "supabase" });
   } catch (error) {
-    console.error("Gemini news generation failed, falling back to local dataset:", error);
-    // Return filtered local cache as fallback gracefully
+    console.error("Failed to fetch articles from Supabase, falling back to local dataset:", error);
     let filtered = [...LOCAL_ARTICLES];
     if (category && category !== "All News" && category !== "All") {
-      filtered = filtered.filter(
-        (a) => a.category.toLowerCase() === category.toLowerCase()
-      );
+      filtered = filtered.filter((a) => a.category.toLowerCase() === category.toLowerCase());
     }
     if (search) {
       const q = search.toLowerCase();
-      filtered = filtered.filter(
-        (a) =>
-          a.title.toLowerCase().includes(q) ||
-          a.summary.toLowerCase().includes(q)
-      );
+      filtered = filtered.filter((a) => a.title.toLowerCase().includes(q) || a.summary.toLowerCase().includes(q));
     }
-    return res.json({ articles: filtered, source: "fallback-cache", error: true });
+    res.json({ articles: filtered, source: "fallback-cache", error: true });
   }
 });
 
-// Serve direct article by ID (including fallback)
-app.get("/api/article/:id", (req, res) => {
+// Serve direct article by ID — reads from Supabase first, falls back to local seed data
+app.get("/api/article/:id", async (req, res) => {
   const { id } = req.params;
+  try {
+    const supabase = await getSupabaseClient();
+    const { data, error } = await supabase.from("articles").select("*").eq("id", id).single();
+    if (!error && data) {
+      return res.json({
+        article: {
+          id: data.id,
+          title: data.title,
+          summary: data.summary,
+          content: data.content,
+          category: data.category,
+          source: data.source,
+          author: data.author,
+          date: data.created_at ? new Date(data.created_at).toISOString().split("T")[0] : "",
+          imageUrl: data.image_url,
+          readTime: data.read_time || "3 min read",
+          views: data.views || 0,
+          isBreaking: data.is_breaking || false,
+          isFeatured: data.is_featured || false,
+          keywords: data.keywords
+        }
+      });
+    }
+  } catch (e) { /* fall through to local */ }
+
   const article = LOCAL_ARTICLES.find((a) => a.id === id);
-  if (article) {
-    return res.json({ article });
-  }
-  return res.status(404).json({ error: "Article not found in memory database." });
+  if (article) return res.json({ article });
+  return res.status(404).json({ error: "Article not found." });
 });
 
 // --- AI FEATURE 1: News Summarization ---
@@ -1759,6 +1755,28 @@ app.delete("/api/comments/:commentId", async (req, res) => {
       .eq("user_id", userId); // Can only delete own comments
     if (error) return res.json({ success: false, error: error.message });
     res.json({ success: true });
+  } catch (e) { res.json({ success: false, error: String(e) }); }
+});
+
+// ============================================================
+// ARTICLE VIEWS — Real view counter
+// ============================================================
+
+// Increment view count for an article, returns updated count
+app.post("/api/articles/:id/view", async (req, res) => {
+  try {
+    const supabase = await getSupabaseClient();
+    // Try atomic RPC increment first (requires increment_views function in Supabase)
+    const { data: rpcData, error: rpcError } = await supabase.rpc("increment_views", { article_id: req.params.id });
+    if (!rpcError && rpcData !== null) {
+      return res.json({ success: true, views: rpcData });
+    }
+    // Fallback: read-then-write (small race window, acceptable at current scale)
+    const { data: current } = await supabase.from("articles").select("views").eq("id", req.params.id).single();
+    const newViews = (current?.views || 0) + 1;
+    const { error } = await supabase.from("articles").update({ views: newViews }).eq("id", req.params.id);
+    if (error) return res.json({ success: false, error: error.message, views: current?.views || 0 });
+    res.json({ success: true, views: newViews });
   } catch (e) { res.json({ success: false, error: String(e) }); }
 });
 
