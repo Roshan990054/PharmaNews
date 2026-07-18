@@ -1780,6 +1780,75 @@ app.post("/api/articles/:id/view", async (req, res) => {
   } catch (e) { res.json({ success: false, error: String(e) }); }
 });
 
+// ============================================================
+// FULL-TEXT SEARCH — Postgres tsvector search with relevance ranking
+// ============================================================
+
+app.get("/api/search", async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  const category = String(req.query.category || "");
+  const sort = String(req.query.sort || "relevant"); // "relevant" | "recent"
+  const limit = Math.min(Number(req.query.limit) || 30, 60);
+
+  if (!q) return res.json({ success: true, articles: [], query: "" });
+
+  try {
+    const supabase = await getSupabaseClient();
+
+    // Try Postgres full-text search RPC first (proper relevance ranking via ts_rank)
+    const { data: rpcData, error: rpcError } = await supabase.rpc("search_articles", {
+      search_query: q,
+      filter_category: category && category !== "All" ? category : null,
+      result_limit: limit
+    });
+
+    let results: any[] = [];
+    let usedFullText = false;
+
+    if (!rpcError && Array.isArray(rpcData)) {
+      results = rpcData;
+      usedFullText = true;
+    } else {
+      // Fallback: ILIKE search across title/summary/content if the RPC function isn't set up yet
+      let query = supabase
+        .from("articles")
+        .select("*")
+        .eq("published", true)
+        .or(`title.ilike.%${q}%,summary.ilike.%${q}%,content.ilike.%${q}%,category.ilike.%${q}%`)
+        .limit(limit);
+      if (category && category !== "All") query = query.eq("category", category);
+      const { data } = await query;
+      results = data || [];
+    }
+
+    if (sort === "recent") {
+      results.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }
+    // "relevant" sort: full-text results already ranked by ts_rank from RPC; ILIKE fallback keeps natural order
+
+    const mapped = results.map((a: any) => ({
+      id: a.id,
+      title: a.title,
+      summary: a.summary,
+      content: a.content,
+      category: a.category,
+      source: a.source,
+      author: a.author,
+      date: a.created_at ? new Date(a.created_at).toISOString().split("T")[0] : "",
+      imageUrl: a.image_url,
+      readTime: a.read_time || "3 min read",
+      views: a.views || 0,
+      isBreaking: a.is_breaking || false,
+      isFeatured: a.is_featured || false,
+      keywords: a.keywords
+    }));
+
+    res.json({ success: true, articles: mapped, query: q, count: mapped.length, mode: usedFullText ? "full-text" : "ilike-fallback" });
+  } catch (e) {
+    res.json({ success: false, error: String(e), articles: [] });
+  }
+});
+
 // Vite middleware setup
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
