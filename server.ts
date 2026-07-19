@@ -1,6 +1,6 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
+import fs from "fs";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { scheduleDailyNewsUpdate, getCachedNews, fetchAndUpdateNews } from "./news-scheduler.js";
@@ -9,7 +9,7 @@ import { startAllAgents } from "./all-agents.js";
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000; // Render assigns its own PORT — must respect it or the proxy 502s
 
 app.use(express.json());
 
@@ -1296,6 +1296,74 @@ app.get("/sitemap.xml", async (req, res) => {
 });
 
 // Robots.txt — tells Google what to crawl
+// ============================================================
+// HEALTH CHECK — For UptimeRobot / performance monitoring
+// ============================================================
+
+const serverStartTime = Date.now();
+
+app.get("/api/health", async (req, res) => {
+  const startedAt = Date.now();
+  const checks: Record<string, any> = {};
+  let overallOk = true;
+
+  // 1. Supabase connectivity
+  try {
+    const supabase = await getSupabaseClient();
+    const { error, count } = await supabase.from("articles").select("*", { count: "exact", head: true });
+    checks.supabase = { ok: !error, articleCount: count ?? null, error: error?.message };
+    if (error) overallOk = false;
+  } catch (e) {
+    checks.supabase = { ok: false, error: String(e) };
+    overallOk = false;
+  }
+
+  // 2. Required environment variables present
+  const requiredEnvVars = ["GEMINI_API_KEY", "NEWS_API_KEY", "SUPABASE_URL", "SUPABASE_SECRET_KEY"];
+  const missingEnvVars = requiredEnvVars.filter(v => !process.env[v]);
+  checks.environment = { ok: missingEnvVars.length === 0, missing: missingEnvVars };
+  if (missingEnvVars.length > 0) overallOk = false;
+
+  // 3. Optional integrations status (informational, doesn't fail health check)
+  checks.integrations = {
+    resend: !!process.env.RESEND_API_KEY,
+    makeWebhook: !!process.env.MAKE_WEBHOOK_URL,
+    pexels: !!process.env.PEXELS_API_KEY,
+    adminEmail: !!process.env.ADMIN_EMAIL
+  };
+
+  // 4. Last agent run recency (warn if no agent has run in 26+ hours — daily cycle should have fired)
+  try {
+    const supabase = await getSupabaseClient();
+    const { data: lastLog } = await supabase.from("agent_logs").select("ran_at").order("ran_at", { ascending: false }).limit(1).single();
+    const hoursSinceLastRun = lastLog ? (Date.now() - new Date(lastLog.ran_at).getTime()) / 3600000 : null;
+    checks.agents = {
+      ok: hoursSinceLastRun !== null && hoursSinceLastRun < 26,
+      hoursSinceLastRun: hoursSinceLastRun !== null ? Math.round(hoursSinceLastRun * 10) / 10 : null,
+      lastRunAt: lastLog?.ran_at || null
+    };
+  } catch (e) {
+    checks.agents = { ok: false, error: String(e) };
+  }
+
+  const responseTimeMs = Date.now() - startedAt;
+  const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
+
+  res.status(overallOk ? 200 : 503).json({
+    status: overallOk ? "healthy" : "degraded",
+    timestamp: new Date().toISOString(),
+    uptimeSeconds,
+    responseTimeMs,
+    checks
+  });
+});
+
+// Lightweight ping — for UptimeRobot's main keep-alive monitor (fast, no DB calls)
+// Also helps prevent Render free-tier from spinning down between the 50s cold-start windows
+app.get("/api/ping", (req, res) => {
+  res.status(200).json({ pong: true, timestamp: new Date().toISOString() });
+});
+
 app.get("/robots.txt", (req, res) => {
   const SITE_URL = process.env.SITE_URL || "https://pharmanews.co.in";
   res.setHeader("Content-Type", "text/plain");
@@ -1851,18 +1919,29 @@ app.get("/api/search", async (req, res) => {
 
 // Vite middleware setup
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
+  const distPath = path.join(process.cwd(), "dist");
+  const distExists = fs.existsSync(path.join(distPath, "index.html"));
+
+  // Reliable production detection: if the built dist/ folder exists, we ARE the
+  // production artifact — serve it statically. Never spin up Vite's dev server
+  // (with its HMR websocket) in this branch, regardless of NODE_ENV, since Render
+  // does not reliably set NODE_ENV=production for Node web services.
+  if (distExists) {
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(path.join(distPath, "index.html"));
+    });
+    console.log("✅ Serving production build from dist/");
+  } else {
+    // Local development only (npm run dev). Dynamic import keeps Vite's dev-server
+    // and its full dependency graph out of the bundled production server.cjs entirely.
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+    console.log("🛠️  Serving via Vite dev server (local development)");
   }
 
   app.listen(PORT, "0.0.0.0", () => {
@@ -1870,6 +1949,9 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch((err) => {
+  console.error("❌ FATAL: startServer() failed to boot:", err);
+  process.exit(1); // Fail loudly with a visible log line instead of a silent hang/502
+});
 startAllAgents();
 scheduleDailyNewsUpdate();
