@@ -15,8 +15,12 @@
     <!-- Google Site Verification -->
     <meta name="google-site-verification" content="GOOGLE_SITE_VERIFICATION_PLACEHOLDER" />
 
-    <!-- Google Analytics GA4 -->
-    <!-- Replace G-XXXXXXXXXX with your actual GA4 Measurement ID -->
+    <!-- Google AdSense — Replace ca-pub-XXXXXXXXXXXXXXXX with your Publisher ID -->
+    <!-- Get yours free at adsense.google.com — required before ad units will show -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXXXXXXXXXX"
+      crossorigin="anonymous"></script>
+
+    <!-- Google Analytics GA4 — Replace G-XXXXXXXXXX with your Measurement ID -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
     <script>
       window.dataLayer = window.dataLayer || [];
@@ -25,31 +29,30 @@
       gtag('config', 'G-XXXXXXXXXX', {
         page_title: 'PharmaNews',
         page_location: window.location.href,
+        send_page_view: true,
         custom_map: {
           dimension1: 'article_category',
           dimension2: 'article_source'
         }
       });
-      // Track article reads
       window.trackArticleRead = function(title, category, source) {
         gtag('event', 'article_read', {
-          article_title: title,
-          article_category: category,
-          article_source: source
+          event_category: 'engagement', event_label: title,
+          article_category: category, article_source: source
         });
       };
-      // Track newsletter signups
       window.trackNewsletterSignup = function(email) {
-        gtag('event', 'newsletter_signup', { method: 'website' });
+        gtag('event', 'newsletter_signup', { event_category: 'conversion', event_label: 'newsletter' });
       };
-      // Track AI usage
-      window.trackAIUsage = function(feature) {
-        gtag('event', 'ai_feature_used', { feature_name: feature });
+      window.trackSearch = function(query) {
+        gtag('event', 'search', { search_term: query });
+      };
+      window.trackAdImpression = function(slotName) {
+        gtag('event', 'ad_impression', { event_category: 'monetization', event_label: slotName });
       };
     </script>
 
-    <!-- Google Tag Manager -->
-    <!-- Replace GTM-XXXXXXX with your actual GTM ID -->
+    <!-- Google Tag Manager — Replace GTM-XXXXXXX with your GTM ID -->
     <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
     new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
     j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
@@ -73,9 +76,15 @@
     <meta name="twitter:image" content="https://pharmanews.co.in/og-image.png" />
 
     <!-- Google News -->
-    <meta name="news_keywords" content="pharmaceutical, FDA, drug approval, clinical trials, biotechnology, healthcare, medicine" />
+    <meta name="news_keywords" content="pharmaceutical, FDA, drug approval, clinical trials, biotechnology, healthcare, medicine, oncology, vaccines" />
     <meta name="syndication-source" content="https://pharmanews.co.in" />
     <meta name="original-source" content="https://pharmanews.co.in" />
+    <meta name="rating" content="general" />
+    <meta name="revisit-after" content="1 day" />
+    <meta name="language" content="English" />
+    <meta name="category" content="Pharmaceutical News" />
+    <meta name="coverage" content="Worldwide" />
+    <meta name="distribution" content="Global" />
 
     <!-- Structured Data — Organization -->
     <script type="application/ld+json">
@@ -84,24 +93,11 @@
       "@type": "NewsMediaOrganization",
       "name": "PharmaNews",
       "url": "https://pharmanews.co.in",
-      "logo": {
-        "@type": "ImageObject",
-        "url": "https://pharmanews.co.in/logo.png",
-        "width": 200,
-        "height": 60
-      },
+      "logo": { "@type": "ImageObject", "url": "https://pharmanews.co.in/logo.png", "width": 200, "height": 60 },
       "description": "AI-powered pharmaceutical news platform delivering real-time FDA approvals, clinical trials, and biotech breakthroughs.",
       "foundingDate": "2026",
-      "sameAs": [
-        "https://twitter.com/PharmaNewsAI",
-        "https://linkedin.com/company/pharmanews",
-        "https://facebook.com/pharmanews"
-      ],
-      "contactPoint": {
-        "@type": "ContactPoint",
-        "contactType": "editorial",
-        "email": "news@pharmanews.co.in"
-      }
+      "sameAs": ["https://twitter.com/PharmaNewsAI", "https://linkedin.com/company/pharmanews", "https://facebook.com/pharmanews"],
+      "contactPoint": { "@type": "ContactPoint", "contactType": "editorial", "email": "news@pharmanews.co.in" }
     }
     </script>
 
@@ -114,10 +110,7 @@
       "url": "https://pharmanews.co.in",
       "potentialAction": {
         "@type": "SearchAction",
-        "target": {
-          "@type": "EntryPoint",
-          "urlTemplate": "https://pharmanews.co.in/?search={search_term_string}"
-        },
+        "target": { "@type": "EntryPoint", "urlTemplate": "https://pharmanews.co.in/?search={search_term_string}" },
         "query-input": "required name=search_term_string"
       }
     }
@@ -147,52 +140,7 @@
     <!-- Performance -->
     <link rel="dns-prefetch" href="https://newsapi.org" />
     <link rel="dns-prefetch" href="https://generativelanguage.googleapis.com" />
-
-    <!-- Google Analytics GA4 — Replace G-XXXXXXXXXX with your Measurement ID -->
-    <script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
-    <script>
-      window.dataLayer = window.dataLayer || [];
-      function gtag(){dataLayer.push(arguments);}
-      gtag('js', new Date());
-      gtag('config', 'G-XXXXXXXXXX', {
-        page_title: 'PharmaNews',
-        page_location: window.location.href,
-        send_page_view: true,
-        custom_map: {
-          dimension1: 'article_category',
-          dimension2: 'article_source'
-        }
-      });
-      // Track article reads
-      window.trackArticleRead = function(title, category, source) {
-        gtag('event', 'article_read', {
-          event_category: 'engagement',
-          event_label: title,
-          article_category: category,
-          article_source: source
-        });
-      };
-      // Track newsletter signup
-      window.trackNewsletterSignup = function(email) {
-        gtag('event', 'newsletter_signup', {
-          event_category: 'conversion',
-          event_label: 'newsletter'
-        });
-      };
-      // Track search
-      window.trackSearch = function(query) {
-        gtag('event', 'search', {
-          search_term: query
-        });
-      };
-    </script>
-
-    <!-- Google Tag Manager — Replace GTM-XXXXXXX with your GTM ID -->
-    <script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
-    new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
-    j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
-    'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
-    })(window,document,'script','dataLayer','GTM-XXXXXXX');</script>
+    <link rel="dns-prefetch" href="https://pagead2.googlesyndication.com" />
 
     <!-- PWA -->
     <link rel="manifest" href="/manifest.json" />
@@ -201,18 +149,6 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="PharmaNews" />
-
-    <!-- Google News Publisher -->
-    <meta name="news_keywords" content="pharmaceutical, FDA, drug approval, clinical trials, biotechnology, healthcare, medicine, oncology, vaccines" />
-    <meta name="syndication-source" content="https://pharmanews.co.in" />
-    <meta name="original-source" content="https://pharmanews.co.in" />
-    <meta name="rating" content="general" />
-    <meta name="revisit-after" content="1 day" />
-    <meta name="language" content="English" />
-    <meta name="category" content="Pharmaceutical News" />
-    <meta name="coverage" content="Worldwide" />
-    <meta name="distribution" content="Global" />
-
   </head>
   <body>
     <!-- Google Tag Manager (noscript) -->
