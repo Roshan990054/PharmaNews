@@ -75,6 +75,44 @@ const TRENDING = [
   "Biotech M&A Activity Surges in Q2 2026",
 ];
 
+// ─── #41 — GOOGLE ADSENSE AD UNIT ────────────────────────────
+// Reusable ad slot. Each instance pushes itself to AdSense once mounted.
+// Replace "XXXXXXXXXX" slot IDs below with real ad unit slot IDs from
+// adsense.google.com → Ads → By ad unit → create each placement.
+declare global { interface Window { adsbygoogle: any[]; } }
+
+function AdUnit({ slot, format = "auto", label = "Advertisement", className = "" }: { slot: string; format?: string; label?: string; className?: string }) {
+  const adRef = useRef<HTMLModElement>(null);
+  const pushed = useRef(false);
+
+  useEffect(() => {
+    if (pushed.current) return;
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+      pushed.current = true;
+      // Mirror into GA4 for combined reporting (defined in index.html)
+      (window as any).trackAdImpression?.(slot);
+    } catch (e) {
+      // AdSense script not loaded yet (e.g. ad blocker) — fail silently
+    }
+  }, [slot]);
+
+  return (
+    <div className={`text-center ${className}`}>
+      <p className="text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-600 mb-1">{label}</p>
+      <ins
+        ref={adRef}
+        className="adsbygoogle"
+        style={{ display: "block" }}
+        data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+        data-ad-slot={slot}
+        data-ad-format={format}
+        data-full-width-responsive="true"
+      />
+    </div>
+  );
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────
 export default function App() {
   // #4 — Dark/Light mode memory (localStorage)
@@ -584,8 +622,16 @@ export default function App() {
               </div>
             ) : (
               <div className="prose prose-slate dark:prose-invert max-w-none leading-relaxed text-slate-700 dark:text-slate-300">
-                {selectedArticle.content?.split("\n").map((para, i) => para.trim() && (
-                  <p key={i} className="mb-4 text-base leading-relaxed">{para}</p>
+                {selectedArticle.content?.split("\n").filter(p => p.trim()).map((para, i, arr) => (
+                  <React.Fragment key={i}>
+                    <p className="mb-4 text-base leading-relaxed">{para}</p>
+                    {/* #41 — In-article ad after 2nd paragraph */}
+                    {i === 1 && arr.length > 2 && (
+                      <div className="my-6 not-prose">
+                        <AdUnit slot="3333333333" format="auto" label="Advertisement" />
+                      </div>
+                    )}
+                  </React.Fragment>
                 ))}
               </div>
             )}
@@ -1092,8 +1138,9 @@ export default function App() {
                   ) : (
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                        {paginated.map(article => (
-                          <div key={article.id} onClick={() => openArticle(article)}
+                        {paginated.map((article, idx) => (
+                          <React.Fragment key={article.id}>
+                          <div onClick={() => openArticle(article)}
                             className="group bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 hover:shadow-lg transition-all cursor-pointer overflow-hidden">
                             <div className="relative h-44 overflow-hidden">
                               <img src={article.imageUrl} alt={article.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -1124,6 +1171,13 @@ export default function App() {
                               </div>
                             </div>
                           </div>
+                          {/* #41 — In-feed ad every 4 articles */}
+                          {(idx + 1) % 4 === 0 && (
+                            <div className="col-span-1 md:col-span-2 bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-4">
+                              <AdUnit slot="2222222222" format="fluid" label="Sponsored" />
+                            </div>
+                          )}
+                          </React.Fragment>
                         ))}
                       </div>
 
@@ -1192,6 +1246,11 @@ export default function App() {
                     ))}
                   </div>
                   <p className="text-[10px] text-slate-400 mt-3 font-mono">* Delayed 15 min. Not financial advice.</p>
+                </div>
+
+                {/* #41 — Sidebar Ad */}
+                <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-4 shadow-sm">
+                  <AdUnit slot="1111111111" format="rectangle" label="Advertisement" />
                 </div>
 
                 {/* Newsletter */}
