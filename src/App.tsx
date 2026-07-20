@@ -113,6 +113,86 @@ function AdUnit({ slot, format = "auto", label = "Advertisement", className = ""
   );
 }
 
+// ─── #42 — LIVE HEALTH MONITOR ────────────────────────────────
+// Self-contained widget: pings /api/health directly, refreshes every 60s.
+// Same data UptimeRobot checks externally — shown here so you can see
+// platform health without leaving the Admin panel.
+function HealthMonitor() {
+  const [health, setHealth] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const check = () => {
+    setLoading(true);
+    fetch("/api/health")
+      .then(r => r.json())
+      .then(setHealth)
+      .catch(() => setHealth({ status: "unreachable" }))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    check();
+    const interval = setInterval(check, 60000); // Re-check every 60s while Admin panel is open
+    return () => clearInterval(interval);
+  }, []);
+
+  const isHealthy = health?.status === "healthy";
+  const isDegraded = health?.status === "degraded";
+
+  return (
+    <div className="bg-white dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 p-6 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <Activity className="w-5 h-5 text-blue-600" /> Platform Health
+        </h3>
+        <button onClick={check} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-600 transition-colors">
+          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Recheck
+        </button>
+      </div>
+
+      {loading && !health ? (
+        <div className="flex justify-center py-6"><RefreshCw className="w-5 h-5 animate-spin text-slate-400" /></div>
+      ) : (
+        <>
+          <div className={`flex items-center gap-3 p-4 rounded-xl mb-4 ${isHealthy ? "bg-emerald-50 dark:bg-emerald-900/20" : isDegraded ? "bg-amber-50 dark:bg-amber-900/20" : "bg-red-50 dark:bg-red-900/20"}`}>
+            <span className={`w-3 h-3 rounded-full flex-none ${isHealthy ? "bg-emerald-500 animate-pulse" : isDegraded ? "bg-amber-500" : "bg-red-500"}`} />
+            <div>
+              <p className={`font-bold text-sm ${isHealthy ? "text-emerald-700 dark:text-emerald-400" : isDegraded ? "text-amber-700 dark:text-amber-400" : "text-red-700 dark:text-red-400"}`}>
+                {isHealthy ? "All systems operational" : isDegraded ? "Degraded — some checks failing" : "Unreachable"}
+              </p>
+              {health?.responseTimeMs !== undefined && (
+                <p className="text-xs text-slate-500 dark:text-slate-400">Response time: {health.responseTimeMs}ms • Uptime: {health.uptimeSeconds ? Math.floor(health.uptimeSeconds / 60) : 0}m</p>
+              )}
+            </div>
+          </div>
+
+          {health?.checks && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+              {[
+                { label: "Database", ok: health.checks.supabase?.ok, detail: health.checks.supabase?.articleCount != null ? `${health.checks.supabase.articleCount} articles` : health.checks.supabase?.error },
+                { label: "Environment", ok: health.checks.environment?.ok, detail: health.checks.environment?.missing?.length ? `Missing: ${health.checks.environment.missing.join(", ")}` : "All keys set" },
+                { label: "Agents", ok: health.checks.agents?.ok, detail: health.checks.agents?.hoursSinceLastRun != null ? `Last ran ${health.checks.agents.hoursSinceLastRun}h ago` : "No runs yet" },
+              ].map((c, i) => (
+                <div key={i} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3">
+                  <span className={`w-2 h-2 rounded-full flex-none ${c.ok ? "bg-emerald-500" : "bg-red-500"}`} />
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{c.label}</p>
+                    <p className="text-[10px] text-slate-400 truncate">{c.detail}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-3 text-xs text-slate-500 dark:text-slate-400">
+            💡 Add <code className="px-1 py-0.5 bg-slate-200 dark:bg-slate-700 rounded font-mono">/api/health</code> as an UptimeRobot monitor (5-min interval, free) to get email/SMS alerts if this platform goes down — even when you're not looking at this panel.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── MAIN APP ─────────────────────────────────────────────────
 export default function App() {
   // #4 — Dark/Light mode memory (localStorage)
@@ -406,12 +486,21 @@ export default function App() {
     }
   }, [urlArticleId, articles]);
 
-  // Load admin stats
+  // Load admin stats — merges /api/admin/stats with /api/health for integrations status
+  const loadAdminStats = useCallback(() => {
+    setAdminLoading(true);
+    Promise.all([
+      fetch("/api/admin/stats").then(r => r.json()).catch(() => ({})),
+      fetch("/api/health").then(r => r.json()).catch(() => ({}))
+    ])
+      .then(([stats, health]) => {
+        setAdminStats({ ...stats, integrations: health.checks?.integrations || {}, health });
+      })
+      .finally(() => setAdminLoading(false));
+  }, []);
+
   useEffect(() => {
-    if (page === "admin" && !adminStats) {
-      setAdminLoading(true);
-      fetch("/api/admin/stats").then(r => r.json()).then(d => { setAdminStats(d); setAdminLoading(false); }).catch(() => setAdminLoading(false));
-    }
+    if (page === "admin" && !adminStats) loadAdminStats();
   }, [page]);
 
 
@@ -784,48 +873,6 @@ export default function App() {
     <div className={theme === "dark" ? "dark" : ""}>
       <div className="min-h-screen bg-slate-50 dark:bg-[#060d1a] text-slate-900 dark:text-slate-100 font-sans">
 
-        {/* Auth Modal */}
-        {authMode && (
-          <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 w-full max-w-md shadow-2xl border border-slate-200 dark:border-slate-700">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                  {authMode === "login" ? "Sign In" : "Create Account"}
-                </h2>
-                <button onClick={() => { setAuthMode(null); setAuthError(""); }} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"><X className="w-5 h-5" /></button>
-              </div>
-              <form onSubmit={handleAuth} className="space-y-4">
-                {authMode === "register" && (
-                  <input value={authName} onChange={e => setAuthName(e.target.value)}
-                    placeholder="Your name" required
-                    className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
-                )}
-                <input type="email" value={authEmail} onChange={e => setAuthEmail(e.target.value)}
-                  placeholder="Email address" required
-                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
-                <input type="password" value={authPassword} onChange={e => setAuthPassword(e.target.value)}
-                  placeholder="Password (min 6 characters)" required minLength={6}
-                  className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
-                {authError && <p className="text-red-500 text-sm">{authError}</p>}
-                <button type="submit" disabled={authLoading}
-                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl font-bold transition-colors">
-                  {authLoading ? "Please wait..." : authMode === "login" ? "Sign In" : "Create Account"}
-                </button>
-                <p className="text-center text-sm text-slate-500">
-                  {authMode === "login" ? "Don't have an account? " : "Already have an account? "}
-                  <button type="button" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}
-                    className="text-blue-600 font-medium hover:underline">
-                    {authMode === "login" ? "Sign up free" : "Sign in"}
-                  </button>
-                </p>
-                {authMode === "register" && (
-                  <p className="text-xs text-slate-400 text-center">Get weekly pharma digest + save bookmarks across devices</p>
-                )}
-              </form>
-            </div>
-          </div>
-        )}
-
         {/* ── STOCK TICKER ── */}
         <div className="bg-slate-900 dark:bg-black border-b border-slate-800 py-1.5 overflow-hidden">
           <div className="flex animate-marquee whitespace-nowrap gap-8">
@@ -926,17 +973,17 @@ export default function App() {
         </header>
 
         {/* Auth Modal */}
-        {authMode && (
-          <div className="fixed inset-0 z-[70] bg-black/70 flex items-center justify-center p-4" onClick={() => setAuthMode(null)}>
-            <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+        {authModal && (
+          <div className="fixed inset-0 z-[70] bg-black/60 flex items-center justify-center p-4" onClick={() => { setAuthModal(null); setAuthError(""); setAuthInfo(""); }}>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                  {authMode === "login" ? "Sign In" : "Create Account"}
-                </h2>
-                <button onClick={() => setAuthMode(null)} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-white">{authModal === "login" ? "Sign In" : "Create Account"}</h2>
+                <button onClick={() => { setAuthModal(null); setAuthError(""); setAuthInfo(""); }} className="text-slate-400 hover:text-slate-600"><X className="w-5 h-5"/></button>
               </div>
-              <form onSubmit={handleAuth} className="space-y-4">
-                {authMode === "register" && (
+              {authInfo && <div className="mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg text-emerald-700 dark:text-emerald-400 text-sm">{authInfo}</div>}
+              {authError && <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">{authError}</div>}
+              <div className="space-y-4">
+                {authModal === "register" && (
                   <input value={authName} onChange={e => setAuthName(e.target.value)}
                     placeholder="Your name" type="text"
                     className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
@@ -945,19 +992,18 @@ export default function App() {
                   placeholder="Email address" type="email" required
                   className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
                 <input value={authPassword} onChange={e => setAuthPassword(e.target.value)}
-                  placeholder="Password" type="password" required minLength={6}
+                  placeholder="Password (min 6 characters)" type="password" required minLength={6}
+                  onKeyDown={e => e.key === "Enter" && handleAuth(authModal)}
                   className="w-full px-4 py-3 border border-slate-300 dark:border-slate-700 rounded-xl text-sm bg-white dark:bg-slate-800 text-slate-900 dark:text-white outline-none focus:border-blue-500" />
-                {authError && <p className="text-red-500 text-sm">{authError}</p>}
-                <button type="submit" disabled={authLoading}
+                <button onClick={() => handleAuth(authModal)} disabled={authLoading}
                   className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl font-bold transition-colors">
-                  {authLoading ? "Please wait..." : authMode === "login" ? "Sign In" : "Create Account"}
+                  {authLoading ? "Please wait..." : authModal === "login" ? "Sign In" : "Create Account"}
                 </button>
-              </form>
+              </div>
               <p className="text-center text-sm text-slate-500 dark:text-slate-400 mt-4">
-                {authMode === "login" ? "Don't have an account? " : "Already have an account? "}
-                <button onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}
-                  className="text-blue-600 dark:text-blue-400 font-semibold hover:underline">
-                  {authMode === "login" ? "Sign Up" : "Sign In"}
+                {authModal === "login" ? "Don't have an account? " : "Already have an account? "}
+                <button onClick={() => setAuthModal(authModal === "login" ? "register" : "login")} className="text-blue-600 font-medium hover:underline">
+                  {authModal === "login" ? "Register" : "Sign In"}
                 </button>
               </p>
             </div>
@@ -1652,7 +1698,7 @@ export default function App() {
                   }} className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors">
                     <Share2 className="w-4 h-4" /> Post Now
                   </button>
-                  <button onClick={() => { setAdminStats(null); setAdminLoading(true); fetch("/api/admin/stats").then(r=>r.json()).then(d=>{setAdminStats(d);setAdminLoading(false);}); }}
+                  <button onClick={() => { setAdminStats(null); loadAdminStats(); }}
                     className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors">
                     <RefreshCw className={`w-4 h-4 ${adminLoading ? "animate-spin" : ""}`} /> Refresh
                   </button>
@@ -1800,6 +1846,9 @@ export default function App() {
                     </div>
                   </div>
 
+                  {/* #42 — Live Health Monitor (for UptimeRobot) */}
+                  <HealthMonitor />
+
                   {/* System Status */}
                   <div className="bg-slate-900 dark:bg-slate-950 rounded-xl border border-slate-700 p-6">
                     <h3 className="font-bold text-white mb-4 flex items-center gap-2 font-mono text-sm uppercase tracking-wider">
@@ -1814,7 +1863,7 @@ export default function App() {
                         { name:"Social Publisher",time:"7:00 AM IST",status:"active" },
                         { name:"Newsletter",     time:"8:00 AM Mon", status:"active" },
                         { name:"Competitor Intel",time:"9:00 AM Sun",status:"active" },
-                        { name:"Resend Email",   time:"On subscribe",status: process.env.RESEND_API_KEY ? "active" : "inactive" },
+                        { name:"Resend Email",   time:"On subscribe",status: adminStats?.integrations?.resend ? "active" : "inactive" },
                       ].map((agent,i) => (
                         <div key={i} className="bg-slate-800 rounded-lg p-3">
                           <div className="flex items-center gap-2 mb-1">
