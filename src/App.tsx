@@ -104,7 +104,7 @@ function AdUnit({ slot, format = "auto", label = "Advertisement", className = ""
         ref={adRef}
         className="adsbygoogle"
         style={{ display: "block" }}
-        data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+        data-ad-client="ca-pub-7642786897374590"
         data-ad-slot={slot}
         data-ad-format={format}
         data-full-width-responsive="true"
